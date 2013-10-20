@@ -8,7 +8,8 @@
 #include <string.h>
 #include "debug.h"
 
-unsigned int debug = 0;
+//unsigned int debug = 0;
+unsigned int debug = 0xff;
 
 struct debug_def {
     int debug_val;

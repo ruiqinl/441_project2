@@ -4,3 +4,5 @@
 { DEBUG_SOCKETS, "Debug socket operations"},
 { DEBUG_PROCESSES, "Debug processes (fork/reap/etc)"},
 { DEBUG_SPIFFY, "Debug the spiffy sending code"},
+{ DEBUG_PROCESS_GET, "Debug process_get"},
+{ DEBUG_PACKET, "Debug packet"},
