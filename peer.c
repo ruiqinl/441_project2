@@ -21,6 +21,7 @@
 #include "bt_parse.h"
 #include "input_buffer.h"
 #include "packet.h"
+#include "process_udp.h"
 
 void peer_run(bt_config_t *config);
 
@@ -50,7 +51,7 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-
+/*
 void process_inbound_udp(int sock) {
 #define BUFLEN 1500
     struct sockaddr_in from;
@@ -66,52 +67,64 @@ void process_inbound_udp(int sock) {
 	   ntohs(from.sin_port),
 	   buf);
 }
+*/
 
-// not used
-void process_get(char *chunkfile, char *outputfile) {
 
-    char *WHOHAS_packet;
-    
+struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile) {
+
+    struct GET_request_t *GET_request;
+    struct packet_info_t *WHOHAS_packet_info;
+
     DPRINTF(DEBUG_PROCESS_GET, "process_get: chunfile:%s, outputfile:%s\n", chunkfile, outputfile);
 
-    // split large chunfile into several WHOHAS packet
-    // !!!!handle this later!!!!!
-    make_WHOHAS(chunkfile, WHOHAS_packet);
+    GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
+    init_GET_request(GET_request);
+
+    parse_chunkfile(GET_request, chunkfile);
+
+    // ???????? several packet ?????????????
+    WHOHAS_packet_info = make_WHOHAS_packet_info(GET_request);
+
+    enlist_packet_info(GET_request->outbound_list, WHOHAS_packet_info);
     
-    //send_to_peers(WHOHAS_packet);
-    
-    
+    return GET_request;
 }
 
-/* return 0 if GET_queue is empty, a positive number otherwise  */
+/* return 0 on success*/
 //int handle_line(struct line_queue_t *line_queue, struct packet_queue_t *GET_queue) {
-int handle_line(struct line_queue_t *line_queue) {
-    char chunkf[128], outf[128];
-    char *WHOHAS_packet;
+struct GET_request_t *handle_line(struct line_queue_t *line_queue) {
 
+    struct GET_request_t *GET_request;
+    char chunkf[128], outf[128];
     struct line_t *line_p;
 
-    while (line_queue->count > 0) {
+    GET_request = NULL;
 
-	line_p= dequeue_line(line_queue);
-	DPRINTF(DEBUG_PROCESS_GET, "handle_line: %s\n", line_p->line_buf);
-	if (sscanf(line_p->line_buf, "GET %120s %120s", chunkf, outf)) {
-	    if (strlen(outf) > 0) {
-
-		// WHOHAS_packet is allocated inside make_WHOHAS, so need to copy it in packet_enqueue
-		WHOHAS_packet = make_WHOHAS(chunkf, outf);
-		//packet_enqueue(GET_queue, WHOHAS_packet); // not implemented yet
-	    }
-	}	
-	free(line_p);
+    if (line_queue->count == 0) {
+	DPRINTF(DEBUG_PACKET, "handle_line: line_queue->count is 0\n");
+	return NULL;
     }
-    
+
+    // assume count == 1
+    if (line_queue->count > 1) {
+	DPRINTF(DEBUG_PACKET, "Warning! handle_line: line_queue->count is %d, >1, only first GET request will be handled\n", line_queue->count);
+    }
+
+    line_p= dequeue_line(line_queue);
+    DPRINTF(DEBUG_PROCESS_GET, "handle_line: %s\n", line_p->line_buf);
+    if (sscanf(line_p->line_buf, "GET %120s %120s", chunkf, outf)) {
+	if (strlen(outf) > 0) {
+		
+	    GET_request = handle_GET_request(chunkf, outf);
+	    
+	}
+    }	
+    free(line_p);
 
     bzero(chunkf, sizeof(chunkf));
     bzero(outf, sizeof(outf));
 
-    //return GET_queue->count;
-    return 0;
+    return GET_request;
 }
 
 
@@ -123,6 +136,9 @@ void peer_run(bt_config_t *config) {
     fd_set master_readfds, master_writefds;
     fd_set readfds, writefds;
     struct user_iobuf *userbuf;
+    
+    struct GET_request_t *GET_request = NULL;
+        
 
     if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) == -1) {
 	perror("peer_run could not create socket");
@@ -133,7 +149,7 @@ void peer_run(bt_config_t *config) {
     myaddr.sin_family = AF_INET;
     myaddr.sin_addr.s_addr = htonl(INADDR_ANY);
     myaddr.sin_port = htons(config->myport);
-  
+    
     if (bind(sock, (struct sockaddr *) &myaddr, sizeof(myaddr)) == -1) {
 	perror("peer_run could not bind socket");
 	exit(-1);
@@ -167,23 +183,31 @@ void peer_run(bt_config_t *config) {
 		// read user input, there might be several GETs, and there might several inputs
 		process_user_input(STDIN_FILENO, userbuf); 
 
-		// handle the GETs already read, set sock in master_writefds
-		if (handle_line(userbuf->line_queue) > 0)
-		    FD_SET(sock, &master_writefds);
+		// handle the GET requests already read, set sock in master_writefds 
+		// assume there is only one GET request
+
+		if ((GET_request = handle_line(userbuf->line_queue)) != NULL) {
+		    GET_request->peer_list = config->peers;
+		    FD_SET(sock, &master_writefds); 
+		} else {
+		    DPRINTF(DEBUG_PACKET, "peer: handle_line, return NULL\n");
+		}
 	    }
 
-	    // send WHOHAS or GET or ACK to peers
+	    // all five kinds of packets
+	    if (FD_ISSET(sock, &readfds)) { 
+		process_inbound_udp(sock, GET_request); // packet2info, check packet type and take different action
+	    }
+
+	    // all five kinds of packet
 	    // in cp1, only consider WHOHAS
 	    if (FD_ISSET(sock, &writefds)) {
-		// not implemented yet
-		//send_to_peer(config->peers, userbuf->WHOHAS_queue);
+		// if it's WHOHAS packet, just send to all peers
+		process_outbound_udp(sock, GET_request);
+		//send_to_peers(config->peers, userbuf->WHOHAS_queue);
 		
 	    }
 
-	    // read IHAVE or DATA from peers
-	    if (FD_ISSET(sock, &readfds)) {
-		process_inbound_udp(sock);
-	    }
 
 	    
 	}
