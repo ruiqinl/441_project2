@@ -198,6 +198,7 @@ struct packet_info_t *packet2info(char *packet) {
 	// hash_count
 	packet_info->hash_count = *(uint8 *)p;
 	p += 4;
+	chunk_size -= 4;
 	// hash_chunk
 	packet_info->hash_chunk = (uint8 *)calloc(chunk_size, sizeof(uint8));
 	memcpy(packet_info->hash_chunk, p, chunk_size);	

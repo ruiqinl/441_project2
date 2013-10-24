@@ -71,16 +71,21 @@ int process_inbound_udp(int sock, struct GET_request_t *GET_request) {
     struct sockaddr_in addr;
     struct packet_info_t *info;
     
-    
     recvfrom(sock, buf, MAX_PACKET_LEN, 0, (struct sockaddr *)&addr, &addr_len);
     
     info = packet2info(buf);
-    dump_packet_info(info);
+    if (debug & DEBUG_PROCESS_UDP) {
+	printf("process_inboud_udp: received packet\n");
+	dump_packet_info(info);
+    }
 
     switch(info->type) {
     case WHOHAS:
 	process_inbound_WHOHAS();
-
+	break;
+    default:
+	DPRINTF(DEBUG_PROCESS_UDP, "process_inbound_udp: switch case, type deos not match\n");
+	break;
     }
 
     return 0;
