@@ -51,29 +51,36 @@ int main(int argc, char **argv) {
     return 0;
 }
 
-/*
-void process_inbound_udp(int sock) {
-#define BUFLEN 1500
-    struct sockaddr_in from;
-    socklen_t fromlen;
-    char buf[BUFLEN];
 
-    fromlen = sizeof(from);
-    spiffy_recvfrom(sock, buf, BUFLEN, 0, (struct sockaddr *) &from, &fromlen);
-
-    printf("PROCESS_INBOUND_UDP SKELETON -- replace!\n"
-	   "Incoming message from %s:%d\n%s\n\n", 
-	   inet_ntoa(from.sin_addr),
-	   ntohs(from.sin_port),
-	   buf);
-}
-*/
-
-void add_info(struct GET_request_t *GET_request, bt_config_t *config) {
-    // peer_list
-    GET_request->peer_list = config->peers;
+bt_peer_t *exclude_self(bt_peer_t *all_nodes, short self_id) {
+    bt_peer_t *self_p;
+    bt_peer_t *prev;
+    int found;
     
-    // parse has_chunk_file
+    found = 0;
+    prev = NULL;
+    self_p = all_nodes;
+    while (self_p != NULL) {
+	if (self_p->id == self_id) {
+	    if (prev != NULL)
+		prev->next = self_p->next;
+	    else
+		all_nodes = all_nodes->next;
+	    found = 1;
+	}
+	prev = self_p;
+	self_p = self_p->next;
+    }
+    
+    if (!found) 
+	DPRINTF(DEBUG_PEER, "Warning! exlucde_self, id:%d, not in the peer list\n", self_id);
+    
+    return all_nodes;
+}
+
+// parse has_chunk_file, get a list of id and hash_string
+void parse_haschunkfile(bt_config_t *config) {
+
     FILE *fp;
     int buf_size = 1024;
     char buf[buf_size];
@@ -91,7 +98,7 @@ void add_info(struct GET_request_t *GET_request, bt_config_t *config) {
 	if (feof(fp))
 	    break;
 
-	DPRINTF(DEBUG_PEER, "add_info, fgets:%s\n", buf);
+	//DPRINTF(DEBUG_PEER, "add_info, fgets:%s", buf);
 	
 	hash_string = (char *)calloc(HASH_STR_LEN+1, sizeof(char));
 	sscanf(buf, "%d %s", &id, hash_string);
@@ -100,13 +107,14 @@ void add_info(struct GET_request_t *GET_request, bt_config_t *config) {
 	id_hash->id = id;
 	id_hash->hash_string = hash_string;
 
-	enlist_id_hash(&(GET_request->id_hash_list), id_hash);
+	enlist_id_hash(&(config->id_hash_list), id_hash);
 
 	memset(buf, 0, buf_size);
     }
     if (debug & DEBUG_PEER) {
-	printf("add_info: GET_request->id_hash_list:\n");
-	dump_id_hash_list(GET_request->id_hash_list);
+	printf("\nparse_hashchunkfile: config->id_hash_list:\n");
+	dump_id_hash_list(config->id_hash_list);
+	printf("\n");
     }
     
 
@@ -114,42 +122,38 @@ void add_info(struct GET_request_t *GET_request, bt_config_t *config) {
 
 
 
-struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile) {
+struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile, struct GET_request_t *GET_request) {
 
-    struct GET_request_t *GET_request;
-    struct packet_info_t *WHOHAS_packet_info;
+    //struct GET_request_t *GET_request;
+    struct packet_info_t *WHOHAS_info_list;
 
     DPRINTF(DEBUG_PEER, "handle_GET_request:\n");
-    DPRINTF(DEBUG_PROCESS_GET, "chunfile:%s, outputfile:%s\n", chunkfile, outputfile);
+    DPRINTF(DEBUG_PEER, "chunfile:%s, outputfile:%s\n\n", chunkfile, outputfile);
 
-    GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
-    init_GET_request(GET_request);
+    //GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
+    //init_GET_request(GET_request);
 
     parse_chunkfile(GET_request, chunkfile);
 
-    // ???????? several packet ?????????????
-    WHOHAS_packet_info = make_WHOHAS_packet_info(GET_request);
+    // a list of WHOHAS pakcet_info
+    WHOHAS_info_list = make_WHOHAS_packet_info(GET_request);
 
     if (debug & DEBUG_PEER) {
-	printf("handle_GET_request: WHOHAS_packet_info list:\n");
-	dump_packet_info(WHOHAS_packet_info);
+	printf("WHOHAS_info_list:\n");
+	dump_packet_info_list(WHOHAS_info_list);
     }
 
-    enlist_packet_info(&(GET_request->outbound_list), WHOHAS_packet_info);
-    //dump_info_list(GET_request->outbound_list);
+    // push to outbound_list for further processing
+    enlist_packet_info(&(GET_request->outbound_list), WHOHAS_info_list);
     
     return GET_request;
 }
 
-/* return 0 on success*/
-//int handle_line(struct line_queue_t *line_queue, struct packet_queue_t *GET_queue) {
-struct GET_request_t *handle_line(struct line_queue_t *line_queue) {
+struct GET_request_t *handle_line(struct line_queue_t *line_queue, struct GET_request_t*GET_request) {
 
-    struct GET_request_t *GET_request;
+    //struct GET_request_t *GET_request;
     char chunkf[128], outf[128];
     struct line_t *line_p;
-
-    GET_request = NULL;
 
     if (line_queue->count == 0) {
 	DPRINTF(DEBUG_PACKET, "handle_line: line_queue->count is 0\n");
@@ -162,11 +166,11 @@ struct GET_request_t *handle_line(struct line_queue_t *line_queue) {
     }
 
     line_p= dequeue_line(line_queue);
-    DPRINTF(DEBUG_PROCESS_GET, "handle_line: %s\n", line_p->line_buf);
+    DPRINTF(DEBUG_PROCESS_GET, "handle_line:\n%s\n", line_p->line_buf);
     if (sscanf(line_p->line_buf, "GET %120s %120s", chunkf, outf)) {
 	if (strlen(outf) > 0) {
 		
-	    GET_request = handle_GET_request(chunkf, outf);
+	    GET_request = handle_GET_request(chunkf, outf, GET_request);
 	    
 	}
     }	
@@ -187,9 +191,7 @@ void peer_run(bt_config_t *config) {
     fd_set master_readfds, master_writefds;
     fd_set readfds, writefds;
     struct user_iobuf *userbuf;
-    
-    struct GET_request_t *GET_request = NULL;
-        
+    struct GET_request_t *GET_request;
 
     if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) == -1) {
 	perror("peer_run could not create socket");
@@ -218,8 +220,15 @@ void peer_run(bt_config_t *config) {
     if (STDIN_FILENO > sock)
 	max_fd = STDIN_FILENO;
 
+    // all sorts of preparation
+    parse_haschunkfile(config);
+
+    GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
+    init_GET_request(GET_request); // actually do nothing
+    GET_request->peer_list = exclude_self(config->peers, config->identity);
 
     userbuf = create_userbuf();
+
     while (1) {
 
 	readfds = master_readfds;
@@ -235,40 +244,28 @@ void peer_run(bt_config_t *config) {
 		process_user_input(STDIN_FILENO, userbuf); 
 
 		// handle the GET requests already read, set sock in master_writefds 
-		// assume there is only one GET request
-
-		if ((GET_request = handle_line(userbuf->line_queue)) != NULL) {
-		    // add some other info to GET_request
-		    add_info(GET_request, config);
-		    
+		// there is only one GET request
+		if ((GET_request = handle_line(userbuf->line_queue, GET_request)) != NULL) {
+		  
 		    FD_SET(sock, &master_writefds); 
-		    /*
-#ifdef _PEER_TEST_
-		    FD_CLR(sock, &master_writefds);
-		    printf("in test:\n");
-		    process_outbound_udp(sock, GET_request);
-		    //process_inbound_udp(sock, )
-#endif
-		    */
-		    
+
 		} else {
-		    DPRINTF(DEBUG_PACKET, "peer: handle_line, return NULL\n");
+		    DPRINTF(DEBUG_PACKET, "peer: nothing to handle\n");
 		}
 	    }
 
 	    // all five kinds of packets
 	    if (FD_ISSET(sock, &readfds)) { 
-		process_inbound_udp(sock, GET_request); // packet2info, check packet type and take different action
+		process_inbound_udp(sock, config, &(GET_request->outbound_list)); // packet2info, check packet type and take different action
+		FD_SET(sock, &master_writefds);
 	    }
 
 	    // all five kinds of packet
 	    // in cp1, only consider WHOHAS
 	    if (FD_ISSET(sock, &writefds)) {
 		// if it's WHOHAS packet, just send to all peers
-		process_outbound_udp(sock, GET_request);
-		FD_CLR(sock, &master_writefds);
-		//send_to_peers(config->peers, userbuf->WHOHAS_queue);
-		
+		if (process_outbound_udp(sock, GET_request) == -1)
+		    FD_CLR(sock, &master_writefds);
 	    }
 
 

@@ -20,24 +20,27 @@
 #define BT_MAX_PEERS 1024
 
 typedef struct bt_peer_s {
-  short  id;
-  struct sockaddr_in addr;
-  struct bt_peer_s *next;
+    short  id;
+    struct sockaddr_in addr;
+    struct bt_peer_s *next;
 } bt_peer_t;
 
 struct bt_config_s {
-  char  chunk_file[BT_FILENAME_LEN];
-  char  has_chunk_file[BT_FILENAME_LEN];
-  char  output_file[BT_FILENAME_LEN];
-  char  peer_list_file[BT_FILENAME_LEN];
-  int   max_conn;
-  short identity;
-  unsigned short myport;
+    char  chunk_file[BT_FILENAME_LEN];
+    char  has_chunk_file[BT_FILENAME_LEN];
+    char  output_file[BT_FILENAME_LEN];
+    char  peer_list_file[BT_FILENAME_LEN];
+    int   max_conn;
+    short identity;
+    unsigned short myport;
 
-  int argc; 
-  char **argv;
+    int argc; 
+    char **argv;
 
-  bt_peer_t *peers;
+    bt_peer_t *peers;
+
+    struct id_hash_t *id_hash_list;
+    
 };
 typedef struct bt_config_s bt_config_t;
 

@@ -8,27 +8,45 @@
 
 struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request){
 
-    struct packet_info_t *packet_info;
-    int packet_len;
+    struct packet_info_t *packet_info_list, *packet_info;
+    int list_size, i, packet_len;
+    int slot_begin, slot_end; // indices of first and off-1 slots
 
-    DPRINTF(DEBUG_PACKET, "make_WHOHAS_packet_info:\n");
+    packet_info_list = NULL;
     
-    packet_len = GET_request->slot_count * HASH_LEN + BYTE_LEN + HEADER_LEN;
+    if (GET_request->slot_count % MAX_HASH != 0)
+	list_size = GET_request->slot_count / MAX_HASH + 1; 
+    else
+	list_size = GET_request->slot_count / MAX_HASH; 
+	    
+    // make a list_size list of packet_info
+    for (i = 0; i < list_size; i++) {
+	slot_begin = i * MAX_HASH;
+	slot_end = (i+1) * MAX_HASH; // does not include slot_end
+	if (slot_end > GET_request->slot_count)
+	    slot_end = GET_request->slot_count;
 
-    // save headers and chunk_t into struct packet_info
-    packet_info = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
+	// first figure out size of the packet_info
+	packet_len = (slot_end - slot_begin) * HASH_LEN + BYTE_LEN + HEADER_LEN;
 
-    packet_info->magic = (uint16)MAGIC;
-    packet_info->version = (uint8)VERSION;
-    packet_info->type = (uint8)WHOHAS;
-    packet_info->header_len = (uint16)HEADER_LEN;
-    packet_info->packet_len = (uint16)packet_len;
-    packet_info->seq_num = (uint32)0;
-    packet_info->ack_num = (uint32)0;
-    packet_info->hash_count = (uint8)GET_request->slot_count;
-    packet_info->hash_chunk = array2chunk(GET_request);
+	// save headers and chunk_t into struct packet_info
+	packet_info = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
+	
+	packet_info->magic = (uint16)MAGIC;
+	packet_info->version = (uint8)VERSION;
+	packet_info->type = (uint8)WHOHAS;
+	packet_info->header_len = (uint16)HEADER_LEN;
+	packet_info->packet_len = (uint16)packet_len;
+	packet_info->seq_num = (uint32)0;
+	packet_info->ack_num = (uint32)0;
+	packet_info->hash_count = (uint8)(slot_end - slot_begin);
+	// include slot end
+	packet_info->hash_chunk = array2chunk(GET_request, slot_begin, slot_end); 
 
-    return packet_info;
+	enlist_packet_info(&packet_info_list, packet_info);
+    }
+
+    return packet_info_list;
 }
 
 /* make block of bytes which can be transmited  */
@@ -85,12 +103,14 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
     char *buf_p;
     int buf_len = 1024;
     char id_buf[8];
+    int count;
 
     if ((fp= fopen(chunkfile, "r")) == NULL) {
 	DEBUG_PERROR("Error! parse_chunkfile, fopen");
 	exit(-1);
     }
 
+    count = 0;
     buf_p = (char *)calloc(buf_len, sizeof(char));
     while ((p = fgets(buf_p, buf_len, fp)) != NULL) {
 
@@ -100,8 +120,8 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 	DPRINTF(DEBUG_PACKET, "parse_chunkfile: p:%s", p);
 
 	if (++(GET_request->slot_count) == MAX_SLOT_COUNT) {
-	    DPRINTF(DEBUG_PACKET, "Error! parse_chunkfile: slot_chunk == MAX_SLOT_COUNT, \n");
-	    exit(-1);
+	    DPRINTF(DEBUG_PACKET, "parse_chunkfile: slot_chunk == MAX_SLOT_COUNT, \n");
+	    count = 0;
 	}
 
 	if (strchr(p, '\n') == NULL) {
@@ -156,8 +176,6 @@ struct packet_info_t *packet2info(char *packet) {
     char *p;
     struct packet_info_t *packet_info;
     int chunk_size;
-
-    DPRINTF(DEBUG_PACKET, "packet2info:\n");
 
     p = packet;
     packet_info = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
@@ -224,10 +242,24 @@ struct packet_info_t *packet2info(char *packet) {
     return packet_info;
 }
 
-void dump_packet_info(struct packet_info_t *p) {
+void dump_packet_info_list(struct packet_info_t *packet_info) {
 
     int i;
+    struct packet_info_t *p;
 
+    i = 0;
+    p = packet_info;
+    while (p != NULL) {
+	printf("packet_info_list[%d]:\n", i++);
+
+	dump_packet_info(p);
+	p = p->next;
+    }
+}
+
+void dump_packet_info(struct packet_info_t *p) {
+    int j;
+    
     printf("magic:%d ", p->magic);
     printf("version:%d ", p->version);
     printf("type:%d ", p->type);
@@ -238,8 +270,8 @@ void dump_packet_info(struct packet_info_t *p) {
     printf("hash_count:%d(not necessarily exist)\n", p->hash_count);
     
     printf("hash_chunk:(not necessarily exist)\n");
-    for (i = 0; i < p->hash_count; i++) 
-	dump_hex(p->hash_chunk + HASH_LEN * i);
+    for (j = 0; j < p->hash_count; j++) 
+	dump_hex(p->hash_chunk + HASH_LEN * j);
 
 }
 
@@ -274,20 +306,23 @@ void str2hex(char *str, uint8 *hex) {
 
 }
 
-/* concatenate hash_hex in each slot into a continuous block  */
-uint8 *array2chunk(struct GET_request_t *GET_request) {
+/* concatenate hash_hex between begin and end into a continuous block  */
+uint8 *array2chunk(struct GET_request_t *GET_request, int slot_begin, int slot_end) {
     uint8 *chunk, *p;
-    int chunk_size, i;
-    
-    chunk_size = GET_request->slot_count * HASH_LEN;
+    int chunk_size, i, j;
+    int slot_count;
+
+    slot_count = slot_end - slot_begin + 1;
+    chunk_size = slot_count * HASH_LEN;
     chunk = (uint8 *)calloc(chunk_size, sizeof(uint8));
     p = chunk;
 
-    for (i = 0; i< GET_request->slot_count; i++) {
-	memcpy(p + i*HASH_LEN, GET_request->slot_array[i]->hash_hex, HASH_LEN);
+    j = 0;
+    for (i = slot_begin; i < slot_end; i++, j++) {
+	memcpy(p + j*HASH_LEN, GET_request->slot_array[i]->hash_hex, HASH_LEN);
     }
-    return chunk;
 
+    return chunk;
 }
 
 void enlist_packet_info(struct packet_info_t **packet_info_list, struct packet_info_t *packet_info) {
@@ -301,14 +336,15 @@ void enlist_packet_info(struct packet_info_t **packet_info_list, struct packet_i
 	    p = p->next;
 	p->next = packet_info;
     }
+
 }
 
 struct packet_info_t *delist_packet_info(struct packet_info_t **list) {
     struct packet_info_t *p;
-    
+
     if (*list == NULL)
 	return NULL;
-    
+
     p = *list;
     *list = (*list)->next;
 
@@ -358,7 +394,6 @@ struct id_hash_t *delist_id_hash(struct id_hash_t **list) {
 void dump_id_hash_list(struct id_hash_t *list) {
     struct id_hash_t *p;
     
-    printf("dump_id_hash_list:\n");
     if (list == NULL) {
 	printf("null\n");
     } else {

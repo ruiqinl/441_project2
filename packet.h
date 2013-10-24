@@ -19,8 +19,10 @@
 #define VERSION 1
 #define MAGIC 15441
 
-#define MAX_PACKET_LEN 1500
-#define MAX_SLOT_COUNT (MAX_PACKET_LEN/20)
+//#define MAX_PACKET_LEN 1500
+#define MAX_PACKET_LEN 40
+#define MAX_HASH ((MAX_PACKET_LEN - HEADER_LEN) / HASH_LEN )
+#define MAX_SLOT_COUNT 1024
 #define HASH_LEN 20
 #define HEADER_LEN 16
 #define BYTE_LEN 4
@@ -30,7 +32,7 @@
 
 
 struct addr_t {
-    struct sockaddr *addr;
+    struct sockaddr_in *sock_addr;
     socklen_t addr_len;    
     
     struct addr_t *next;
@@ -91,8 +93,8 @@ struct id_hash_t {
 struct GET_request_t {
 
     int slot_count;
-    //int slot_capacity;
     struct slot_t *slot_array[MAX_SLOT_COUNT];
+
     struct id_hash_t *id_hash_list;
 
     bt_peer_t *peer_list;
@@ -101,6 +103,7 @@ struct GET_request_t {
     struct packet_info_t *inbound_list; // all five kinds of packets
     struct packet_info_t *outbound_list; // all five kinds of packets
     
+    struct GET_request_t *next;
 };
 
 
@@ -109,14 +112,17 @@ void parse_chunkfile(struct GET_request_t * GET_request, char *chunkfile);
 char *info2packet(struct packet_info_t *packet_info);
 struct packet_info_t *packet2info(char *packet);
 void str2hex(char *str, uint8 *hex);
-uint8 *array2chunk(struct GET_request_t *GET_request);
+uint8 *array2chunk(struct GET_request_t *GET_request, int slot_begin, int slot_end);
+
+void dump_packet_info_list(struct packet_info_t *packet_info);
 void dump_packet_info(struct packet_info_t *p);
 void dump_hex(uint8 *hex);
 
 void init_GET_request(struct GET_request_t *p);
 void enlist_packet_info(struct packet_info_t **packet_info_list, struct packet_info_t *packet_info);
 struct packet_info_t *delist_packet_info(struct packet_info_t **list);
-void dump_info_list(struct packet_info_t *list);
+//void dump_info_list(struct packet_info_t *list);
+
 
 void enlist_id_hash(struct id_hash_t **id_hash_list, struct id_hash_t *id_hash);
 struct id_hash_t *delist_id_hash(struct id_hash_t **list);
