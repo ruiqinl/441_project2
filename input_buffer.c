@@ -118,7 +118,7 @@ void print_queue(struct line_queue_t* line_queue){
 
 
 
-#ifdef TESTING
+#ifdef _TEST_INPUT_BUFFER_
 
 int main(){
     struct user_iobuf *userbuf;

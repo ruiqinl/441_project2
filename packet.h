@@ -98,13 +98,16 @@ struct GET_request_t {
 
 struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t *GET_request);
 void parse_chunkfile(struct GET_request_t * GET_request, char *chunkfile);
-void info2packet(char *packet, struct packet_info_t *packet_p);
-struct packet_info_t * packet2info(char *packet);
+char *info2packet(struct packet_info_t *packet_info);
+struct packet_info_t *packet2info(char *packet);
 void str2hex(char *str, uint8 *hex);
-void dump_hex(uint8 *hex);
 uint8 *array2chunk(struct GET_request_t *GET_request);
 void dump_packet_info(struct packet_info_t *p);
+void dump_hex(uint8 *hex);
+
 void init_GET_request(struct GET_request_t *p);
-void enlist_packet_info(struct packet_info_t *packet_info_list, struct packet_info_t *packet_info);
+void enlist_packet_info(struct packet_info_t **packet_info_list, struct packet_info_t *packet_info);
+struct packet_info_t *delist_packet_info(struct packet_info_t **list);
+void dump_info_list(struct packet_info_t *list);
 
 #endif

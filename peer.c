@@ -75,7 +75,8 @@ struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile) {
     struct GET_request_t *GET_request;
     struct packet_info_t *WHOHAS_packet_info;
 
-    DPRINTF(DEBUG_PROCESS_GET, "process_get: chunfile:%s, outputfile:%s\n", chunkfile, outputfile);
+    DPRINTF(DEBUG_PEER, "handle_GET_request:\n");
+    DPRINTF(DEBUG_PROCESS_GET, "chunfile:%s, outputfile:%s\n", chunkfile, outputfile);
 
     GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
     init_GET_request(GET_request);
@@ -85,7 +86,10 @@ struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile) {
     // ???????? several packet ?????????????
     WHOHAS_packet_info = make_WHOHAS_packet_info(GET_request);
 
-    enlist_packet_info(GET_request->outbound_list, WHOHAS_packet_info);
+    dump_packet_info(WHOHAS_packet_info);
+
+    enlist_packet_info(&(GET_request->outbound_list), WHOHAS_packet_info);
+    dump_info_list(GET_request->outbound_list);
     
     return GET_request;
 }
@@ -187,8 +191,16 @@ void peer_run(bt_config_t *config) {
 		// assume there is only one GET request
 
 		if ((GET_request = handle_line(userbuf->line_queue)) != NULL) {
+		    
 		    GET_request->peer_list = config->peers;
 		    FD_SET(sock, &master_writefds); 
+
+#ifdef _PEER_TEST_
+		    FD_CLR(sock, &master_writefds);
+		    printf("in test:\n");
+		    process_outbound_udp(sock, GET_request);
+#endif
+		    
 		} else {
 		    DPRINTF(DEBUG_PACKET, "peer: handle_line, return NULL\n");
 		}

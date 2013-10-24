@@ -15,6 +15,7 @@ struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request
 
     // save headers and chunk_t into struct packet_info
     packet_info = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
+
     packet_info->magic = (uint16)MAGIC;
     packet_info->version = (uint8)VERSION;
     packet_info->type = (uint8)WHOHAS;
@@ -25,23 +26,20 @@ struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request
     packet_info->hash_count = (uint8)GET_request->slot_count;
     packet_info->hash_chunk = array2chunk(GET_request);
 
-    if (debug & DEBUG_PACKET){
-	printf("make_WHOHAS_packet:\n");
-	dump_packet_info(packet_info);
-    }
-
-    // save members of packet_t into a block of bytes pointed by packet
-    //packet = (char *)calloc(packet_len, sizeof(char));
-
-    //info2packet(packet, packet_info);
+    DPRINTF(DEBUG_PACKET, "make_WHOHAS_packet_info done\n");
 
     return packet_info;
-
 }
 
 /* make block of bytes which can be transmited  */
-void info2packet(char* packet, struct packet_info_t *packet_info){
+char *info2packet(struct packet_info_t *packet_info){
     
+    char *packet, *packet_head;
+
+    DPRINTF(DEBUG_PACKET, "info2packet:\n");
+    
+    packet_head = (char *)calloc(packet_info->packet_len, sizeof(char));
+    packet = packet_head;
  
     uint16 magic = htons(packet_info->magic);
     memcpy(packet, &magic, 2);
@@ -77,6 +75,7 @@ void info2packet(char* packet, struct packet_info_t *packet_info){
     int chunk_size = packet_info->hash_count * HASH_LEN;
     memcpy(packet, packet_info->hash_chunk, chunk_size);
     
+    return packet_head;
 }
 
 /* parse chunk file, get hash_id, hash in string form and hex form  */
@@ -150,15 +149,17 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 }
 
 void init_GET_request(struct GET_request_t *p) {
-    // nothing
+    // nothing to do
 }
 
 /* parse packet, save fields into  packet_info_t */
-struct packet_info_t * packet2info(char *packet) {
+struct packet_info_t *packet2info(char *packet) {
 
     char *p;
     struct packet_info_t *packet_info;
     int chunk_size;
+
+    DPRINTF(DEBUG_PACKET, "packet2info:\n");
 
     p = packet;
     packet_info = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
@@ -290,16 +291,48 @@ uint8 *array2chunk(struct GET_request_t *GET_request) {
 
 }
 
-void enlist_packet_info(struct packet_info_t *packet_info_list, struct packet_info_t *packet_info) {
+void enlist_packet_info(struct packet_info_t **packet_info_list, struct packet_info_t *packet_info) {
     struct packet_info_t *p;
-    p = packet_info_list;
-    while (p != NULL)
-	p = p->next;
-    p->next = packet_info;
+
+    if (*packet_info_list == NULL)
+	*packet_info_list = packet_info; 
+    else {
+	p = *packet_info_list;
+	while (p->next != NULL)
+	    p = p->next;
+	p->next = packet_info;
+    }
+}
+
+struct packet_info_t *delist_packet_info(struct packet_info_t **list) {
+    struct packet_info_t *p;
+    
+    if (*list == NULL)
+	return NULL;
+    
+    p = *list;
+    *list = (*list)->next;
+
+    return p;
+}
+
+void dump_info_list(struct packet_info_t *list) {
+    struct packet_info_t *p;
+    
+    printf("dump_info_list:\n");
+    if (list == NULL) {
+	printf("null\n");
+    } else {
+	p = list;
+	while (p != NULL) {
+	    dump_packet_info(p);
+	    p = p->next;
+	}
+    }
 }
 
 
-#ifdef TESTING
+#ifdef _TEST_PACKET_
 int main(){
 
     printf("sizeof(uint8):%ld\n", sizeof(uint8));
@@ -307,20 +340,20 @@ int main(){
     printf("sizeof(uint32):%ld\n", sizeof(uint32));
 
     struct GET_request_t * GET_request;
-    char *WHOHAS_packet;
+    struct packet_info_t *WHOHAS_packet_info, *packet_info;
+    char *packet;
 
     GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
     init_GET_request(GET_request);
 
     parse_chunkfile(GET_request, "A.chunks");
 
-    WHOHAS_packet = make_WHOHAS_packet(GET_request);
-
-    struct packet_info_t *info;
-    info = packet2info(WHOHAS_packet);    
-    printf("after packet2info:\n");
-    dump_packet_info(info);
+    WHOHAS_packet_info = make_WHOHAS_packet_info(GET_request);
+    dump_packet_info(WHOHAS_packet_info);
     
+    packet = info2packet(WHOHAS_packet_info);
+    packet_info = packet2info(packet);
+    dump_packet_info(packet_info);
 
     return 0;
 }
