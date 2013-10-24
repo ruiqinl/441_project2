@@ -10,6 +10,8 @@ struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request
 
     struct packet_info_t *packet_info;
     int packet_len;
+
+    DPRINTF(DEBUG_PACKET, "make_WHOHAS_packet_info:\n");
     
     packet_len = GET_request->slot_count * HASH_LEN + BYTE_LEN + HEADER_LEN;
 
@@ -26,8 +28,6 @@ struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request
     packet_info->hash_count = (uint8)GET_request->slot_count;
     packet_info->hash_chunk = array2chunk(GET_request);
 
-    DPRINTF(DEBUG_PACKET, "make_WHOHAS_packet_info done\n");
-
     return packet_info;
 }
 
@@ -36,8 +36,6 @@ char *info2packet(struct packet_info_t *packet_info){
     
     char *packet, *packet_head;
 
-    DPRINTF(DEBUG_PACKET, "info2packet:\n");
-    
     packet_head = (char *)calloc(packet_info->packet_len, sizeof(char));
     packet = packet_head;
  
@@ -99,7 +97,7 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 	if (feof(fp)) 
 	    break;
 
-	DPRINTF(DEBUG_PACKET, "parse_chunkfile: p:%s\n", p);
+	DPRINTF(DEBUG_PACKET, "parse_chunkfile: p:%s", p);
 
 	if (++(GET_request->slot_count) == MAX_SLOT_COUNT) {
 	    DPRINTF(DEBUG_PACKET, "Error! parse_chunkfile: slot_chunk == MAX_SLOT_COUNT, \n");
@@ -123,7 +121,7 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 	
 	strncpy(id_buf, p, p1-p);
 	slot_p->hash_id = atoi(id_buf);
-	DPRINTF(DEBUG_PACKET, "slot->hash_id:%d\n", slot_p->hash_id);
+	DPRINTF(DEBUG_PACKET, "slot_p->hash_id:%d\n", slot_p->hash_id);
 	
 	p = p1 + 1;
 	p1 = strchr(p, '\n'); // should not be null
@@ -331,6 +329,47 @@ void dump_info_list(struct packet_info_t *list) {
 	}
     }
 }
+
+void enlist_id_hash(struct id_hash_t **id_hash_list, struct id_hash_t *id_hash) {
+    struct id_hash_t *p;
+
+    if (*id_hash_list == NULL)
+	*id_hash_list = id_hash; 
+    else {
+	p = *id_hash_list;
+	while (p->next != NULL)
+	    p = p->next;
+	p->next = id_hash;
+    }
+}
+
+struct id_hash_t *delist_id_hash(struct id_hash_t **list) {
+    struct id_hash_t *p;
+    
+    if (*list == NULL)
+	return NULL;
+    
+    p = *list;
+    *list = (*list)->next;
+
+    return p;
+}
+
+void dump_id_hash_list(struct id_hash_t *list) {
+    struct id_hash_t *p;
+    
+    printf("dump_id_hash_list:\n");
+    if (list == NULL) {
+	printf("null\n");
+    } else {
+	p = list;
+	while (p != NULL) {
+	    printf("%d %s\n", p->id, p->hash_string);
+	    p = p->next;
+	}
+    }
+}
+
 
 
 #ifdef _TEST_PACKET_

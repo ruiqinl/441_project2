@@ -69,6 +69,50 @@ void process_inbound_udp(int sock) {
 }
 */
 
+void add_info(struct GET_request_t *GET_request, bt_config_t *config) {
+    // peer_list
+    GET_request->peer_list = config->peers;
+    
+    // parse has_chunk_file
+    FILE *fp;
+    int buf_size = 1024;
+    char buf[buf_size];
+    int id;
+    char *hash_string;
+    struct id_hash_t *id_hash;
+    
+    if ((fp = fopen(config->has_chunk_file, "r")) == NULL) {
+	DPRINTF(DEBUG_PEER, "Error! add_info, open");
+	exit(-1);
+    }
+    
+    memset(buf, 0, buf_size);
+    while (fgets(buf, buf_size, fp) != NULL) {
+	if (feof(fp))
+	    break;
+
+	DPRINTF(DEBUG_PEER, "add_info, fgets:%s\n", buf);
+	
+	hash_string = (char *)calloc(HASH_STR_LEN+1, sizeof(char));
+	sscanf(buf, "%d %s", &id, hash_string);
+	
+	id_hash = (struct id_hash_t *)calloc(1, sizeof(struct id_hash_t));
+	id_hash->id = id;
+	id_hash->hash_string = hash_string;
+
+	enlist_id_hash(&(GET_request->id_hash_list), id_hash);
+
+	memset(buf, 0, buf_size);
+    }
+    if (debug & DEBUG_PEER) {
+	printf("add_info: GET_request->id_hash_list:\n");
+	dump_id_hash_list(GET_request->id_hash_list);
+    }
+    
+
+}
+
+
 
 struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile) {
 
@@ -86,10 +130,13 @@ struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile) {
     // ???????? several packet ?????????????
     WHOHAS_packet_info = make_WHOHAS_packet_info(GET_request);
 
-    dump_packet_info(WHOHAS_packet_info);
+    if (debug & DEBUG_PEER) {
+	printf("handle_GET_request: WHOHAS_packet_info list:\n");
+	dump_packet_info(WHOHAS_packet_info);
+    }
 
     enlist_packet_info(&(GET_request->outbound_list), WHOHAS_packet_info);
-    dump_info_list(GET_request->outbound_list);
+    //dump_info_list(GET_request->outbound_list);
     
     return GET_request;
 }
@@ -191,15 +238,18 @@ void peer_run(bt_config_t *config) {
 		// assume there is only one GET request
 
 		if ((GET_request = handle_line(userbuf->line_queue)) != NULL) {
+		    // add some other info to GET_request
+		    add_info(GET_request, config);
 		    
-		    GET_request->peer_list = config->peers;
 		    FD_SET(sock, &master_writefds); 
-
+		    /*
 #ifdef _PEER_TEST_
 		    FD_CLR(sock, &master_writefds);
 		    printf("in test:\n");
 		    process_outbound_udp(sock, GET_request);
+		    //process_inbound_udp(sock, )
 #endif
+		    */
 		    
 		} else {
 		    DPRINTF(DEBUG_PACKET, "peer: handle_line, return NULL\n");
@@ -216,6 +266,7 @@ void peer_run(bt_config_t *config) {
 	    if (FD_ISSET(sock, &writefds)) {
 		// if it's WHOHAS packet, just send to all peers
 		process_outbound_udp(sock, GET_request);
+		FD_CLR(sock, &master_writefds);
 		//send_to_peers(config->peers, userbuf->WHOHAS_queue);
 		
 	    }

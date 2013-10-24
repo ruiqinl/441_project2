@@ -19,10 +19,11 @@ int process_outbound_udp(int sock, struct GET_request_t *GET_request) {
     }
     
     while ((packet_info = delist_packet_info(&(GET_request->outbound_list))) != NULL) {
-	// check type and process
+
 	if(debug & DEBUG_PROCESS_UDP)
 	    dump_info_list(GET_request->outbound_list);
 
+	// check type and process
 	switch(packet_info->type) {
 	case WHOHAS:
 	    DPRINTF(DEBUG_PROCESS_UDP, "switch case WHOHAS\n");
@@ -49,20 +50,22 @@ int process_outbound_WHOHAS(int sock, struct packet_info_t *packet_info, bt_peer
     
     peer = peer_list;
     while (peer != NULL) {
-	send_packet(peer, packet, packet_info->packet_len);
+	DPRINTF(DEBUG_PROCESS_UDP, "process_outbound_WHOHAS:send to peer %d\n", peer->id);
+	send_packet(peer, packet, packet_info->packet_len, sock);
 	peer = peer->next;
     }
 
-    DPRINTF(DEBUG_PROCESS_UDP, "process_outbound_WHOHAS done\n");
-    
     return 0;
 }
 
-int send_packet(bt_peer_t *peer, char *packet, int packet_len) {
-    printf("send_packet not implemented yet\n");
+int send_packet(bt_peer_t *peer, char *packet, int packet_len, int sock) {
+      //while the whole data isn't sent completely
+    if (sendto(sock, packet, packet_len, 0, (struct sockaddr *)&(peer->addr), sizeof(struct sockaddr_in)) < 0){
+        DPRINTF(DEBUG_PACKET, "Error! send_packet error\n");
+    }
+
     return 0;
 }
-
 
 int process_inbound_udp(int sock, struct GET_request_t *GET_request) { 
     
@@ -81,7 +84,7 @@ int process_inbound_udp(int sock, struct GET_request_t *GET_request) {
 
     switch(info->type) {
     case WHOHAS:
-	process_inbound_WHOHAS();
+	process_inbound_WHOHAS(info, GET_request);
 	break;
     default:
 	DPRINTF(DEBUG_PROCESS_UDP, "process_inbound_udp: switch case, type deos not match\n");
@@ -92,8 +95,9 @@ int process_inbound_udp(int sock, struct GET_request_t *GET_request) {
 
 }
 
-int process_inbound_WHOHAS(){
-    printf("process_inbound_WHOHAS not implemnted yet\n");
+int process_inbound_WHOHAS(struct packet_info_t *packet_info, struct GET_request_t *GET_request){
+    printf("process_inbound_WHOHAS not implemented yet!!\n");
+
     return 0;
 }
 

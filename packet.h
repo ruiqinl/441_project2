@@ -81,11 +81,19 @@ struct peer_t {
     struct peer_t *next;
 };
 
+struct id_hash_t {
+    int id;
+    char* hash_string;
+    
+    struct id_hash_t *next;
+};
+
 struct GET_request_t {
 
     int slot_count;
     //int slot_capacity;
     struct slot_t *slot_array[MAX_SLOT_COUNT];
+    struct id_hash_t *id_hash_list;
 
     bt_peer_t *peer_list;
     struct peer_to_slot_t peer_to_slot; // for demultiplexing, and prevent simutaneous download from a peer
@@ -109,5 +117,9 @@ void init_GET_request(struct GET_request_t *p);
 void enlist_packet_info(struct packet_info_t **packet_info_list, struct packet_info_t *packet_info);
 struct packet_info_t *delist_packet_info(struct packet_info_t **list);
 void dump_info_list(struct packet_info_t *list);
+
+void enlist_id_hash(struct id_hash_t **id_hash_list, struct id_hash_t *id_hash);
+struct id_hash_t *delist_id_hash(struct id_hash_t **list);
+void dump_id_hash_list(struct id_hash_t *list);
 
 #endif
