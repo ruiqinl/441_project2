@@ -6,3 +6,5 @@
 { DEBUG_SPIFFY, "Debug the spiffy sending code"},
 { DEBUG_PROCESS_GET, "Debug process_get"},
 { DEBUG_PACKET, "Debug packet"},
+{ DEBUG_PROCESS_UDP, "Debug process_udp"},
+{ DEBUG_PEER, "Debug process_udp"},

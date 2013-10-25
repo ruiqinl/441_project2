@@ -182,6 +182,7 @@ int process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *confi
     }
 
     // enlist
+    //printf("*outbound_list:%p\n", *outbound_list);
     enlist_packet_info(outbound_list, IHAVE_packet_info);
 
     return count;
