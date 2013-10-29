@@ -7,7 +7,7 @@ OBJS		= peer.o bt_parse.o spiffy.o debug.o input_buffer.o chunk.o sha.o packet.o
 MK_CHUNK_OBJS   = make_chunks.o chunk.o sha.o
 
 BINS            = peer make-chunks
-TESTBINS        = test_debug test_input_buffer 
+TESTBINS        = test_debug test_input_buffer test_packet
 
 # suffix rule
 .c.o:

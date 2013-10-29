@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "debug.h"
 #include "spiffy.h"
 #include "bt_parse.h"
@@ -26,6 +27,15 @@
 void peer_run(bt_config_t *config);
 
 int main(int argc, char **argv) {
+
+    printf("sizeof(uint8):%ld\n", sizeof(uint8));
+    printf("sizeof(uint16):%ld\n", sizeof(uint16));
+    printf("sizeof(uint32):%ld\n", sizeof(uint32));
+
+    assert(sizeof(uint8) == 1);
+    assert(sizeof(uint16) == 2);
+    assert(sizeof(uint32) == 4);
+
     bt_config_t config;
 
     bt_init(&config, argc, argv); 
@@ -240,7 +250,7 @@ void peer_run(bt_config_t *config) {
 	readfds = master_readfds;
 	writefds = master_writefds;
     
-	nfds = select(sock+1, &readfds, &writefds, NULL, NULL);
+	nfds = select(max_fd+1, &readfds, &writefds, NULL, NULL);
     
 	if (nfds > 0) {
 

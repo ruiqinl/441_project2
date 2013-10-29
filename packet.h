@@ -19,8 +19,8 @@
 #define VERSION 1
 #define MAGIC 15441
 
-//#define MAX_PACKET_LEN 1500
-#define MAX_PACKET_LEN 40
+#define MAX_PACKET_LEN 1500
+//#define MAX_PACKET_LEN 40
 #define MAX_HASH ((MAX_PACKET_LEN - HEADER_LEN) / HASH_LEN )
 #define MAX_SLOT_COUNT 1024
 #define HASH_LEN 20
@@ -109,8 +109,8 @@ struct GET_request_t {
 
 struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t *GET_request);
 void parse_chunkfile(struct GET_request_t * GET_request, char *chunkfile);
-char *info2packet(struct packet_info_t *packet_info);
-struct packet_info_t *packet2info(char *packet);
+uint8 *info2packet(struct packet_info_t *packet_info);
+struct packet_info_t *packet2info(uint8 *packet);
 void str2hex(char *str, uint8 *hex);
 uint8 *array2chunk(struct GET_request_t *GET_request, int slot_begin, int slot_end);
 

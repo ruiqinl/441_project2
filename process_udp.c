@@ -45,7 +45,7 @@ int process_outbound_udp(int sock, struct GET_request_t *GET_request) {
 }
 
 int process_outbound_IHAVE(int sock, struct packet_info_t *packet_info) {
-    char *packet;
+    uint8 *packet;
     
     packet = info2packet(packet_info);
     
@@ -60,7 +60,7 @@ int process_outbound_IHAVE(int sock, struct packet_info_t *packet_info) {
 
 int process_outbound_WHOHAS(int sock, struct packet_info_t *packet_info, bt_peer_t *peer_list){
 
-    char *packet;
+    uint8 *packet;
     bt_peer_t* peer;
 
     packet = info2packet(packet_info);    
@@ -76,7 +76,7 @@ int process_outbound_WHOHAS(int sock, struct packet_info_t *packet_info, bt_peer
 }
 
 
-int send_packet(bt_peer_t *peer, char *packet, int packet_len, int sock) {
+int send_packet(bt_peer_t *peer, uint8 *packet, int packet_len, int sock) {
       //while the whole data isn't sent completely
     if (sendto(sock, packet, packet_len, 0, (struct sockaddr *)&(peer->addr), sizeof(struct sockaddr_in)) < 0){
         DEBUG_PERROR("Error! send_packet error\n");
@@ -87,7 +87,7 @@ int send_packet(bt_peer_t *peer, char *packet, int packet_len, int sock) {
 
 int process_inbound_udp(int sock, bt_config_t *config, struct packet_info_t **outbound_list) { 
     
-    char buf[MAX_PACKET_LEN+1];
+    uint8 buf[MAX_PACKET_LEN+1];
     socklen_t addr_len;
     struct sockaddr_in *addr;
     struct packet_info_t *info;
@@ -110,6 +110,7 @@ int process_inbound_udp(int sock, bt_config_t *config, struct packet_info_t **ou
 	break;
     case IHAVE:
 	printf("switch case IHAVE: not implemented yet\n");
+	break;
     default:
 	DPRINTF(DEBUG_PROCESS_UDP, "process_inbound_udp: switch case, type is not WHOHAS or IHAVE\n");
 	break;

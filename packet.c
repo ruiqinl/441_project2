@@ -50,11 +50,11 @@ struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request
 }
 
 /* make block of bytes which can be transmited  */
-char *info2packet(struct packet_info_t *packet_info){
+uint8 *info2packet(struct packet_info_t *packet_info){
     
-    char *packet, *packet_head;
+    uint8 *packet, *packet_head;
 
-    packet_head = (char *)calloc(packet_info->packet_len, sizeof(char));
+    packet_head = (uint8 *)calloc(packet_info->packet_len, sizeof(uint8));
     packet = packet_head;
  
     uint16 magic = htons(packet_info->magic);
@@ -94,6 +94,20 @@ char *info2packet(struct packet_info_t *packet_info){
     return packet_head;
 }
 
+void dump_packet(uint8 *packet) {
+    uint8 buf;
+    int i;
+
+    for (i = 0; i < 16; i++) {
+	memcpy(&buf, packet, 1);
+	printf("%x\n", buf);
+	packet += 1;
+    }
+
+}
+
+
+
 /* parse chunk file, get hash_id, hash in string form and hex form  */
 void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
     
@@ -103,14 +117,12 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
     char *buf_p;
     int buf_len = 1024;
     char id_buf[8];
-    int count;
 
     if ((fp= fopen(chunkfile, "r")) == NULL) {
 	DEBUG_PERROR("Error! parse_chunkfile, fopen");
 	exit(-1);
     }
 
-    count = 0;
     buf_p = (char *)calloc(buf_len, sizeof(char));
     while ((p = fgets(buf_p, buf_len, fp)) != NULL) {
 
@@ -121,7 +133,6 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 
 	if (++(GET_request->slot_count) == MAX_SLOT_COUNT) {
 	    DPRINTF(DEBUG_PACKET, "parse_chunkfile: slot_chunk == MAX_SLOT_COUNT, \n");
-	    count = 0;
 	}
 
 	if (strchr(p, '\n') == NULL) {
@@ -171,9 +182,9 @@ void init_GET_request(struct GET_request_t *p) {
 }
 
 /* parse packet, save fields into  packet_info_t */
-struct packet_info_t *packet2info(char *packet) {
+struct packet_info_t *packet2info(uint8 *packet) {
 
-    char *p;
+    uint8 *p;
     struct packet_info_t *packet_info;
     int chunk_size;
 
@@ -416,7 +427,7 @@ int main(){
 
     struct GET_request_t * GET_request;
     struct packet_info_t *WHOHAS_packet_info, *packet_info;
-    char *packet;
+    uint8 *packet;
 
     GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
     init_GET_request(GET_request);
@@ -427,6 +438,7 @@ int main(){
     dump_packet_info(WHOHAS_packet_info);
     
     packet = info2packet(WHOHAS_packet_info);
+    dump_packet(packet);
     packet_info = packet2info(packet);
     dump_packet_info(packet_info);
 
