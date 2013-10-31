@@ -1,0 +1,2 @@
+All unit tests are inside each .c file itself. 
+After building the code, run corresponding test_* binary files to check the test results.
