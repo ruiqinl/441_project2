@@ -1,23 +1,30 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include "bt_parse.h"
+#include "list.h"
 #include "packet.h"
 #include "debug.h"
 
 
 
-struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request){
+struct list_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request, struct list_t *peer_list){
 
-    struct packet_info_t *packet_info_list, *packet_info;
+    //struct packet_info_t *packet_info_list, *packet_info;
+    struct packet_info_t *packet_info;
+    struct list_t *packet_info_list = NULL;
     int list_size, i, packet_len;
-    int slot_begin, slot_end; // indices of first and off-1 slots
-
-    packet_info_list = NULL;
+    int slot_begin, slot_end; // indices of first and off-1 slots    
     
     if (GET_request->slot_count % MAX_HASH != 0)
 	list_size = GET_request->slot_count / MAX_HASH + 1; 
     else
 	list_size = GET_request->slot_count / MAX_HASH; 
+    
+    init_list(&packet_info_list);
 	    
     // make a list_size list of packet_info
     for (i = 0; i < list_size; i++) {
@@ -42,19 +49,20 @@ struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request
 	packet_info->hash_count = (uint8)(slot_end - slot_begin);
 	// include slot end
 	packet_info->hash_chunk = array2chunk(GET_request, slot_begin, slot_end); 
+	packet_info->peer_list = peer_list;
 
-	enlist_packet_info(&packet_info_list, packet_info);
+	enlist(packet_info_list, packet_info);
     }
 
     return packet_info_list;
 }
 
 /* make block of bytes which can be transmited  */
-char *info2packet(struct packet_info_t *packet_info){
+uint8 *info2packet(struct packet_info_t *packet_info){
     
-    char *packet, *packet_head;
+    uint8 *packet, *packet_head;
 
-    packet_head = (char *)calloc(packet_info->packet_len, sizeof(char));
+    packet_head = (uint8 *)calloc(packet_info->packet_len, sizeof(uint8));
     packet = packet_head;
  
     uint16 magic = htons(packet_info->magic);
@@ -171,9 +179,9 @@ void init_GET_request(struct GET_request_t *p) {
 }
 
 /* parse packet, save fields into  packet_info_t */
-struct packet_info_t *packet2info(char *packet) {
+struct packet_info_t *packet2info(uint8 *packet) {
 
-    char *p;
+    uint8 *p;
     struct packet_info_t *packet_info;
     int chunk_size;
 
@@ -242,6 +250,7 @@ struct packet_info_t *packet2info(char *packet) {
     return packet_info;
 }
 
+/*
 void dump_packet_info_list(struct packet_info_t *packet_info) {
 
     int i;
@@ -256,9 +265,14 @@ void dump_packet_info_list(struct packet_info_t *packet_info) {
 	p = p->next;
     }
 }
+*/
 
-void dump_packet_info(struct packet_info_t *p) {
+//void dump_packet_info(struct packet_info_t *p) {
+void info_printer(void *data) {
     int j;
+    struct packet_info_t *p = NULL;
+
+    p = (struct packet_info_t *)data;
     
     printf("magic:%d ", p->magic);
     printf("version:%d ", p->version);
@@ -273,7 +287,11 @@ void dump_packet_info(struct packet_info_t *p) {
     for (j = 0; j < p->hash_count; j++) 
 	dump_hex(p->hash_chunk + HASH_LEN * j);
 
+    // print peer list
+    printf("peer_list:\n");
+    dump_list(p->peer_list, peer_printer, "\n");
 }
+
 
 void dump_hex(uint8 *hex) {
 
@@ -325,6 +343,7 @@ uint8 *array2chunk(struct GET_request_t *GET_request, int slot_begin, int slot_e
     return chunk;
 }
 
+/*
 void enlist_packet_info(struct packet_info_t **packet_info_list, struct packet_info_t *packet_info) {
     struct packet_info_t *p;
 
@@ -338,7 +357,9 @@ void enlist_packet_info(struct packet_info_t **packet_info_list, struct packet_i
     }
 
 }
+*/
 
+/*
 struct packet_info_t *delist_packet_info(struct packet_info_t **list) {
     struct packet_info_t *p;
 
@@ -350,11 +371,12 @@ struct packet_info_t *delist_packet_info(struct packet_info_t **list) {
 
     return p;
 }
+*/
 
+/*
 void dump_info_list(struct packet_info_t *list) {
     struct packet_info_t *p;
     
-    printf("dump_info_list:\n");
     if (list == NULL) {
 	printf("null\n");
     } else {
@@ -365,6 +387,7 @@ void dump_info_list(struct packet_info_t *list) {
 	}
     }
 }
+*/
 
 void enlist_id_hash(struct id_hash_t **id_hash_list, struct id_hash_t *id_hash) {
     struct id_hash_t *p;
@@ -407,6 +430,8 @@ void dump_id_hash_list(struct id_hash_t *list) {
 
 
 
+
+
 #ifdef _TEST_PACKET_
 int main(){
 
@@ -416,14 +441,14 @@ int main(){
 
     struct GET_request_t * GET_request;
     struct packet_info_t *WHOHAS_packet_info, *packet_info;
-    char *packet;
+    uint8 *packet;
 
     GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
     init_GET_request(GET_request);
 
     parse_chunkfile(GET_request, "A.chunks");
 
-    WHOHAS_packet_info = make_WHOHAS_packet_info(GET_request);
+    WHOHAS_packet_info = make_WHOHAS_packet_info(GET_request, NULL);
     dump_packet_info(WHOHAS_packet_info);
     
     packet = info2packet(WHOHAS_packet_info);

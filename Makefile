@@ -3,11 +3,11 @@ CC 		= gcc
 CFLAGS		= -g -Wall -DDEBUG
 LDFLAGS		= -lm
 #TESTDEFS	= -DTESTING			# comment this out to disable debugging code
-OBJS		= peer.o bt_parse.o spiffy.o debug.o input_buffer.o chunk.o sha.o packet.o process_udp.o
+OBJS		= peer.o bt_parse.o spiffy.o debug.o input_buffer.o chunk.o sha.o packet.o process_udp.o list.o
 MK_CHUNK_OBJS   = make_chunks.o chunk.o sha.o
 
 BINS            = peer make-chunks
-TESTBINS        = test_debug test_input_buffer 
+TESTBINS        = test_debug test_input_buffer test_list
 
 # suffix rule
 .c.o:
@@ -53,6 +53,9 @@ test_input_buffer: input_buffer.c debug.c
 
 test_packet: packet.c debug.c
 	$(CC) $^ $(CFLAGS) -D_TEST_PACKET_ -o $@
+
+test_list: list.c debug.c
+	$(CC) $^ $(CFLAGS) -D_TEST_LIST_ -o $@
 
 #test_process_udp: process_udp.c debug.c packet.c
 #	$(CC) $^ $(CFLAGS) -D_TEST_PROCESS_UDP_ -o $@

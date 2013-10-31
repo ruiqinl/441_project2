@@ -5,35 +5,37 @@
 #include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
+#include "list.h"
 #include "debug.h"
 #include "process_udp.h"
 #include "packet.h"
+#include "spiffy.h"
 
-int process_outbound_udp(int sock, struct GET_request_t *GET_request) {
+/* Delist a packet_info, convert it into packet and send it out 
+ * Return length of the reamining list
+ */
+int process_outbound_udp(int sock, struct list_t *list) {
     
-    struct packet_info_t *packet_info;
+    struct packet_info_t *packet_info = NULL;
     
+    assert(list != NULL);
 
-    if (GET_request == NULL) {
-	DPRINTF(DEBUG_PACKET, "\nprocess_outbound_udp: GET_request is NULL\n");
-	return -1;
-    }
-    
-    while ((packet_info = delist_packet_info(&(GET_request->outbound_list))) != NULL) {
+    if ((packet_info = delist(list)) != NULL) {
 	if(debug & DEBUG_PROCESS_UDP) {
 	    printf("\nprocess_outbound_udp: process packet_info:\n");
-	    dump_packet_info(packet_info);
+	    info_printer(packet_info);
 	}
 
 	// check type and process
 	switch(packet_info->type) {
 	case WHOHAS:
 	    DPRINTF(DEBUG_PROCESS_UDP, "switch case WHOHAS\n");
-	    process_outbound_WHOHAS(sock, packet_info, GET_request->peer_list);
+	    send_info(sock, packet_info);
 	    break;
 	case IHAVE:
 	    DPRINTF(DEBUG_PROCESS_UDP, "switch case IHAVE\n");
-	    process_outbound_IHAVE(sock, packet_info);
+	    send_info(sock, packet_info);
 	    break;
 	default:
 	    DPRINTF(DEBUG_PROCESS_UDP, "Error! process_outbound_udp, type does not match\n");
@@ -41,15 +43,16 @@ int process_outbound_udp(int sock, struct GET_request_t *GET_request) {
 	}
     }
 
-    return 0;
+    return list->length;
 }
 
-int process_outbound_IHAVE(int sock, struct packet_info_t *packet_info) {
+/*
+int send_info(int sock, struct packet_info_t *packet_info) {
     char *packet;
     
     packet = info2packet(packet_info);
     
-    if (sendto(sock, packet, packet_info->packet_len, 0, (struct sockaddr *)packet_info->addr_list->sock_addr, sizeof(struct sockaddr_in)) < 0) {
+    if (spiffy_sendto(sock, packet, packet_info->packet_len, 0, (struct sockaddr *)packet_info->addr_list->sock_addr, sizeof(struct sockaddr_in)) < 0) {
 
 	DEBUG_PERROR("Error! process_outbound_IHAVE\n");
 	exit(-1);
@@ -57,17 +60,26 @@ int process_outbound_IHAVE(int sock, struct packet_info_t *packet_info) {
 
     return 0;
 }
+*/
 
-int process_outbound_WHOHAS(int sock, struct packet_info_t *packet_info, bt_peer_t *peer_list){
+int send_info(int sock, struct packet_info_t *packet_info){
 
-    char *packet;
-    bt_peer_t* peer;
+    uint8 *packet = NULL;
+    struct list_item_t *iterator = NULL;
+    bt_peer_t *peer = NULL;
 
     packet = info2packet(packet_info);    
     
-    peer = peer_list;
-    while (peer != NULL) {
-	DPRINTF(DEBUG_PROCESS_UDP, "process_outbound_WHOHAS:send to peer %d\n", peer->id);
+    iterator = get_iterator(packet_info->peer_list);
+    if (iterator == NULL) {
+	DPRINTF(DEBUG_PROCESS_UDP, "Warning! send_info, info->peer_list is null\n");
+	return -1;
+    }
+
+    while (has_next(iterator)) {
+	peer = next(&iterator);
+	assert(peer != NULL);
+	DPRINTF(DEBUG_PROCESS_UDP, "send_info: send to peer %d\n", peer->id);
 	send_packet(peer, packet, packet_info->packet_len, sock);
 	peer = peer->next;
     }
@@ -76,34 +88,36 @@ int process_outbound_WHOHAS(int sock, struct packet_info_t *packet_info, bt_peer
 }
 
 
-int send_packet(bt_peer_t *peer, char *packet, int packet_len, int sock) {
+int send_packet(bt_peer_t *peer, uint8 *packet, int packet_len, int sock) {
       //while the whole data isn't sent completely
-    if (sendto(sock, packet, packet_len, 0, (struct sockaddr *)&(peer->addr), sizeof(struct sockaddr_in)) < 0){
+    if (spiffy_sendto(sock, packet, packet_len, 0, (struct sockaddr *)&(peer->addr), sizeof(struct sockaddr_in)) < 0){
         DEBUG_PERROR("Error! send_packet error\n");
     }
 
     return 0;
 }
 
-int process_inbound_udp(int sock, bt_config_t *config, struct packet_info_t **outbound_list) { 
+/* Process received packets based on packet type  */
+int process_inbound_udp(int sock, bt_config_t *config, struct list_t *outbound_list) { 
     
-    char buf[MAX_PACKET_LEN+1];
+    uint8 buf[MAX_PACKET_LEN+1];
     socklen_t addr_len;
     struct sockaddr_in *addr;
     struct packet_info_t *info;
     
     addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in));
-    addr_len = sizeof(struct sockaddr);
+    addr_len = sizeof(struct sockaddr);    
     
-    recvfrom(sock, buf, MAX_PACKET_LEN, 0, (struct sockaddr *)addr, &addr_len);
+    spiffy_recvfrom(sock, buf, MAX_PACKET_LEN, 0, (struct sockaddr *)addr, &addr_len);
     
     info = packet2info(buf);
 
     if (debug & DEBUG_PROCESS_UDP) {
 	printf("\nprocess_inboud_udp: received packet\n");
-	dump_packet_info(info);
+	info_printer(info);
     }
 
+    // handle packets of different types seperately
     switch(info->type) {
     case WHOHAS:
 	process_inbound_WHOHAS(info, config, addr, addr_len, outbound_list);
@@ -119,23 +133,33 @@ int process_inbound_udp(int sock, bt_config_t *config, struct packet_info_t **ou
 
 }
 
-// parse WHOHAS packet and make IHAVE packet
-int process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *config, struct sockaddr_in *sockaddr, socklen_t addr_len, struct packet_info_t **outbound_list){
+/* Parse WHOHAS pacekt and make IHAVE packet info
+ * Return IHAVE_packet_info->hash_count
+ */
+int process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *config, struct sockaddr_in *sockaddr, socklen_t addr_len, struct list_t *outbound_list){
 
-    uint8 *target_hash, *chunk_p;
-    struct packet_info_t *IHAVE_packet_info;
+    uint8 *target_hash = NULL;
+    uint8 *chunk_p = NULL;
+    struct packet_info_t *IHAVE_packet_info = NULL;
     uint8 chunk_data[MAX_PACKET_LEN];
-    int count, i;
-    struct addr_t *addr;
+    int count = 0;
+    int i;
+    //struct addr_t *addr = NULL;
     int chunk_size;
+    //struct list_t *peer_list = NULL;
+    bt_peer_t *peer = NULL;
 
     IHAVE_packet_info = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
 
-    // save reply address into IHAVE packet
-    addr = (struct addr_t *)calloc(1, sizeof(struct addr_t));
-    addr->sock_addr = sockaddr;
-    addr->addr_len = addr_len;
-
+    // identify the peer sending WHOHAS packet
+    peer = addr2peer(config, sockaddr); 
+    init_list(&(IHAVE_packet_info->peer_list));
+    enlist(IHAVE_packet_info->peer_list, peer);
+    assert(IHAVE_packet_info->peer_list->length == 1);
+    printf("process_inbound_WHOHAS: IHAVE_PACKETInfo->peer_list:\n");
+    dump_list(IHAVE_packet_info->peer_list, peer_printer, "\n");
+    
+    // other fields
     count = 0;
     chunk_p = chunk_data;
 
@@ -172,18 +196,15 @@ int process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *confi
     IHAVE_packet_info->header_len = HEADER_LEN;
     IHAVE_packet_info->packet_len = HEADER_LEN + BYTE_LEN + IHAVE_packet_info->hash_count * HASH_LEN;
     
-    IHAVE_packet_info->addr_list = addr;
-
-    IHAVE_packet_info->next = NULL;
+    //IHAVE_packet_info->next = NULL;
 
     if (debug & DEBUG_PROCESS_UDP) {
 	printf("process_udp: make IAHVE_packet_info:\n");
-	dump_packet_info(IHAVE_packet_info);
+	info_printer(IHAVE_packet_info);
     }
 
-    // enlist
-    //printf("*outbound_list:%p\n", *outbound_list);
-    enlist_packet_info(outbound_list, IHAVE_packet_info);
+    // enlist IHAVE_packet_info to the outbound_list
+    enlist(outbound_list, IHAVE_packet_info);
 
     return count;
 }

@@ -50,5 +50,7 @@ void bt_parse_command_line(bt_config_t *c);
 void bt_parse_peer_list(bt_config_t *c);
 void bt_dump_config(bt_config_t *c);
 bt_peer_t *bt_peer_info(const bt_config_t *c, int peer_id);
+void peer_printer(void *peer);
+bt_peer_t *addr2peer(bt_config_t *c, struct sockaddr_in *addr);
 
 #endif /* _BT_PARSE_H_ */

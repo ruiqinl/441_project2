@@ -19,8 +19,8 @@
 #define VERSION 1
 #define MAGIC 15441
 
-//#define MAX_PACKET_LEN 1500
-#define MAX_PACKET_LEN 40
+#define MAX_PACKET_LEN 1500
+//#define MAX_PACKET_LEN 40
 #define MAX_HASH ((MAX_PACKET_LEN - HEADER_LEN) / HASH_LEN )
 #define MAX_SLOT_COUNT 1024
 #define HASH_LEN 20
@@ -51,9 +51,10 @@ struct packet_info_t {
     uint8 hash_count;
     uint8 *hash_chunk;
     
-    struct addr_t* addr_list;
+    //struct addr_t* addr_list;
+    struct list_t *peer_list;
 
-    struct packet_info_t *next;
+    //struct packet_info_t *next;
 };
 
 
@@ -95,27 +96,33 @@ struct GET_request_t {
     int slot_count;
     struct slot_t *slot_array[MAX_SLOT_COUNT];
 
-    struct id_hash_t *id_hash_list;
+    struct list_t *id_hash_list;
 
-    bt_peer_t *peer_list;
+    struct list_t *peer_list;
     struct peer_to_slot_t peer_to_slot; // for demultiplexing, and prevent simutaneous download from a peer
-
-    struct packet_info_t *inbound_list; // all five kinds of packets
-    struct packet_info_t *outbound_list; // all five kinds of packets
     
-    struct GET_request_t *next;
+    // cp1
+    //struct packet_info_t *inbound_list; // all five kinds of packets
+    //struct packet_info_t *outbound_list; // all five kinds of packets
+
+    // cp2
+    struct list_t *outbound_info_list;
+    struct list_t *inbound_info_list;
+    
+    //struct GET_request_t *next;
 };
 
 
-struct packet_info_t* make_WHOHAS_packet_info(struct GET_request_t *GET_request);
+struct list_t* make_WHOHAS_packet_info(struct GET_request_t *GET_request, struct list_t *peer_list);
 void parse_chunkfile(struct GET_request_t * GET_request, char *chunkfile);
-char *info2packet(struct packet_info_t *packet_info);
-struct packet_info_t *packet2info(char *packet);
+uint8 *info2packet(struct packet_info_t *packet_info);
+struct packet_info_t *packet2info(uint8 *packet);
 void str2hex(char *str, uint8 *hex);
 uint8 *array2chunk(struct GET_request_t *GET_request, int slot_begin, int slot_end);
 
-void dump_packet_info_list(struct packet_info_t *packet_info);
-void dump_packet_info(struct packet_info_t *p);
+//void dump_packet_info_list(struct packet_info_t *packet_info);
+//void dump_packet_info(struct packet_info_t *p);
+void info_printer(void *packet_info);
 void dump_hex(uint8 *hex);
 
 void init_GET_request(struct GET_request_t *p);
