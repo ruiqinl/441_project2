@@ -4,7 +4,7 @@ CFLAGS = -g -Wall -DDEBUG
 LDFAGS = -lm
 
 OBJS = peer_test.o list.o bt_parse.o debug.o input_buffer.o chunk.o sha.o packet.o spiffy.o ctr_send_recv.o process_udp.o
-BINS = peer_test
+BINS = peer_test list_test
 
 .c.o:
 	$(CC) $(CFLAGS) -c $<
@@ -14,6 +14,9 @@ all:$(BINS)
 
 peer_test: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)
+
+list_test: list.c debug.c
+	$(CC) $(CFLAGS) -D_TEST_LIST_ $^ -o $@
 
 clean:
 	rm -f $(OBJS) $(BINS)

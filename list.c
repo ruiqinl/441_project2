@@ -145,6 +145,7 @@ int main(){
     printf("list->length:%d\n", list->length);
     delist(list);
     
+    return 0;
 }
 
 #endif
