@@ -9,7 +9,7 @@
 #include "debug.h"
 
 //unsigned int debug = 0;
-unsigned int debug = 0xff;
+unsigned int debug = 0xffff;
 
 struct debug_def {
     int debug_val;

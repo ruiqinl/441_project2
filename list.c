@@ -3,7 +3,7 @@
 #include "debug.h"
 #include "list.h"
 
-
+/* Return pointer to list, return NULL on error  */
 struct list_t *enlist(struct list_t *list, void *data) {
     struct list_item_t *t = NULL;
 
@@ -58,6 +58,7 @@ struct list_t *init_list(struct list_t **list) {
     return *list;
 }
 
+/* Return list pointer on success, no way to fail  */
 struct list_t *cat_list(struct list_t **p, struct list_t **q) {
 
     assert(p != NULL);
@@ -83,10 +84,7 @@ struct list_t *cat_list(struct list_t **p, struct list_t **q) {
 int dump_list(struct list_t *list, void(*printer)(void *data), char *delim) {
     struct list_item_t *item = NULL;
     
-    if (list == NULL) {
-	printf("NULL list\n");
-	return 0;
-    }	
+    assert(list != NULL);
     
     if (list->length == 0 || list->head == NULL) 
 	printf("empty list");
@@ -103,15 +101,15 @@ int dump_list(struct list_t *list, void(*printer)(void *data), char *delim) {
 }
 
 struct list_item_t *get_iterator(struct list_t *list) {
-    if (list == NULL)
-	return NULL;
+    assert(list != NULL);
     return list->head;
 }
 
 int has_next(struct list_item_t *iterator) {
     
     if (iterator == NULL)
-	return 0;
+    	return 0;
+    //assert(iterator != NULL);
     return 1;
 }
 
@@ -125,6 +123,29 @@ void *next(struct list_item_t **iterator) {
     *iterator = (*iterator)->next;
 
     return data;
+}
+
+/* Return the ind_th element of the list, ind starts from 0 */
+void *list_ind(struct list_t *list, int ind) {
+    struct list_item_t *iterator = NULL;
+    int count;
+
+    assert(list != NULL);
+    assert(ind >= 0);
+    assert(ind < list->length);
+    
+    count = -1;
+    iterator = get_iterator(list);
+    while(has_next(iterator)) {
+	++count;
+
+	if (count == ind) 
+	    return next(&iterator);
+	else
+	    iterator = iterator->next;
+    }
+
+    return NULL;
 }
 
 
@@ -151,6 +172,18 @@ int main(){
     dump_list(list, int_printer, " ");
     enlist(list, &k);
     dump_list(list, int_printer, " ");
+
+    int *m;
+    m = list_ind(list, 2);
+    printf("list_in(list, 2):%d\n", *m);
+    
+    m = list_ind(list, 1);
+    printf("list_in(list, 1):%d\n", *m);
+
+    m = list_ind(list, 0);
+    printf("list_in(list, 0):%d\n", *m);
+
+    //m = list_ind(list, -1);
 
     delist(list);
     dump_list(list, int_printer, " ");

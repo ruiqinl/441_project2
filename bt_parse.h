@@ -15,6 +15,7 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include "list.h"
 
 #define BT_FILENAME_LEN 255
 #define BT_MAX_PEERS 1024
@@ -52,5 +53,6 @@ void bt_dump_config(bt_config_t *c);
 bt_peer_t *bt_peer_info(const bt_config_t *c, int peer_id);
 void peer_printer(void *peer);
 bt_peer_t *addr2peer(bt_config_t *c, struct sockaddr_in *addr);
+int peerlist_id(struct list_t *list);
 
 #endif /* _BT_PARSE_H_ */

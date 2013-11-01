@@ -33,6 +33,7 @@ extern unsigned int debug;
 #define DEBUG_PEER 0x10  // DBTEXT:  Debug process_udp
 #define DEBUG_LIST 0x100 // DBTEXT: Debug list
 #define DEBUG_PARSE 0x200 // DBTEXT: Debug bt_parse
+#define DEBUG_CTR 0x400 // DBTEXT: Debug bt_parse
 
 #define DEBUG_ALL  0xffffffff
 

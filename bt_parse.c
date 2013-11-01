@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include "list.h"
 #include "bt_parse.h"
 #include "debug.h"
 
@@ -213,4 +214,13 @@ bt_peer_t *addr2peer(bt_config_t *config, struct sockaddr_in *addr) {
     return p;
 }
 
+int peerlist_id (struct list_t *list) {
+    
+    bt_peer_t *peer = NULL;
+    int id;
+    
+    peer = list_ind(list, 0);
+    id = peer->id;
 
+    return id;
+}

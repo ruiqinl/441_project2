@@ -13,7 +13,7 @@
 #include "spiffy.h"
 
 /* Delist a packet_info, convert it into packet and send it out 
- * Return length of the reamining list
+ * Return -1 on type error, 0 on sending no packets, 1 on sending a packet
  */
 int process_outbound_udp(int sock, struct list_t *list) {
     
@@ -31,19 +31,28 @@ int process_outbound_udp(int sock, struct list_t *list) {
 	switch(packet_info->type) {
 	case WHOHAS:
 	    DPRINTF(DEBUG_PROCESS_UDP, "switch case WHOHAS\n");
-	    send_info(sock, packet_info);
 	    break;
 	case IHAVE:
 	    DPRINTF(DEBUG_PROCESS_UDP, "switch case IHAVE\n");
-	    send_info(sock, packet_info);
 	    break;
+	case ACK:
+	    DPRINTF(DEBUG_PROCESS_UDP, "switch case ACK\n");
+	    break;
+	case GET:
+	    DPRINTF(DEBUG_PROCESS_UDP, "switch case ACK\n");
+	    break;
+	case DATA:
+	    DPRINTF(DEBUG_PROCESS_UDP, "switch case DATA\n");
 	default:
 	    DPRINTF(DEBUG_PROCESS_UDP, "Error! process_outbound_udp, type does not match\n");
+	    return -1; // invalid type
 	    break;
 	}
+
+	return send_info(sock, packet_info);
     }
 
-    return list->length;
+    return 0;
 }
 
 /*
@@ -62,49 +71,60 @@ int send_info(int sock, struct packet_info_t *packet_info) {
 }
 */
 
+/* Return 1 on sending packet to at least one peer, 0 on failing packet to any peer, -1 on peer_list is empty  */
 int send_info(int sock, struct packet_info_t *packet_info){
 
     uint8 *packet = NULL;
     struct list_item_t *iterator = NULL;
     bt_peer_t *peer = NULL;
+    int count;
 
     packet = info2packet(packet_info);    
     
+    // send to the peers in the peer_list of the packet_info
     iterator = get_iterator(packet_info->peer_list);
     if (iterator == NULL) {
 	DPRINTF(DEBUG_PROCESS_UDP, "Warning! send_info, info->peer_list is null\n");
 	return -1;
     }
 
-    printf("send_info\n");
+    count = 0;
     while (has_next(iterator)) {
 	peer = next(&iterator);
 	assert(peer != NULL);
 	DPRINTF(DEBUG_PROCESS_UDP, "send_info: send to peer %d\n", peer->id);
 	send_packet(peer, packet, packet_info->packet_len, sock);
 	peer = peer->next;
+	count++;
     }
-
-    return 0;
+    
+    if (count == 0)
+	return 0;
+    return 1;
 }
 
 
+/* Return 1 on sending, -1 on error  */
 int send_packet(bt_peer_t *peer, uint8 *packet, int packet_len, int sock) {
       //while the whole data isn't sent completely
     if (spiffy_sendto(sock, packet, packet_len, 0, (struct sockaddr *)&(peer->addr), sizeof(struct sockaddr_in)) < 0){
         DEBUG_PERROR("Error! send_packet error\n");
+	return -1;
     }
 
-    return 0;
+    return 1;
 }
 
-/* Process received packets based on packet type  */
-int process_inbound_udp(int sock, bt_config_t *config, struct list_t *outbound_list) { 
+/* Convert packet into packet_info, and save sender's addr 
+ * Return pointer to packet_info 
+ */
+struct packet_info_t *process_inbound_udp(int sock, bt_config_t *config) {
     
     uint8 buf[MAX_PACKET_LEN+1];
     socklen_t addr_len;
-    struct sockaddr_in *addr;
-    struct packet_info_t *info;
+    struct sockaddr_in *addr = NULL;
+    struct packet_info_t *info = NULL;
+    bt_peer_t *peer = NULL;
     
     addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in));
     addr_len = sizeof(struct sockaddr);    
@@ -113,32 +133,24 @@ int process_inbound_udp(int sock, bt_config_t *config, struct list_t *outbound_l
     
     info = packet2info(buf);
 
+    // identify the peer sending the packet
+    peer = addr2peer(config, addr); 
+    init_list(&(info->peer_list));
+    enlist(info->peer_list, peer);
+    assert(info->peer_list->length == 1);
+
     if (debug & DEBUG_PROCESS_UDP) {
 	printf("\nprocess_inboud_udp: received packet\n");
 	info_printer(info);
     }
 
-    // handle packets of different types seperately
-    switch(info->type) {
-    case WHOHAS:
-	DPRINTF(DEBUG_PROCESS_UDP, "switch case WHOHAS\n");
-	process_inbound_WHOHAS(info, config, addr, addr_len, outbound_list);
-	break;
-    case IHAVE:
-	printf("switch case IHAVE: not implemented yet\n");
-    default:
-	DPRINTF(DEBUG_PROCESS_UDP, "process_inbound_udp: switch case, type is not WHOHAS or IHAVE\n");
-	break;
-    }
-
-    return 0;
-
+    return info;
 }
 
 /* Parse WHOHAS pacekt and make IHAVE packet info
- * Return IHAVE_packet_info->hash_count
+ * Return pointer to IHAVE pacekt info on success, return NULL if IAHVE packet info is empty
  */
-int process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *config, struct sockaddr_in *sockaddr, socklen_t addr_len, struct list_t *outbound_list){
+struct packet_info_t *process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *config) {
 
     uint8 *target_hash = NULL;
     uint8 *chunk_p = NULL;
@@ -146,26 +158,14 @@ int process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *confi
     uint8 chunk_data[MAX_PACKET_LEN];
     int count = 0;
     int i;
-    //struct addr_t *addr = NULL;
     int chunk_size;
-    //struct list_t *peer_list = NULL;
-    bt_peer_t *peer = NULL;
 
     IHAVE_packet_info = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
 
-    // identify the peer sending WHOHAS packet
-    peer = addr2peer(config, sockaddr); 
-    init_list(&(IHAVE_packet_info->peer_list));
-    enlist(IHAVE_packet_info->peer_list, peer);
-    assert(IHAVE_packet_info->peer_list->length == 1);
-    printf("process_inbound_WHOHAS: IHAVE_PACKETInfo->peer_list:\n");
-    dump_list(IHAVE_packet_info->peer_list, peer_printer, "\n");
-    
-    // other fields
+    // earch for matching hash
     count = 0;
     chunk_p = chunk_data;
 
-    // earch for matching hash
     for (i = 0; i < packet_info->hash_count; i++) {
 	target_hash = packet_info->hash_chunk + i * HASH_LEN;
 	DPRINTF(DEBUG_PROCESS_UDP, "process_inbound_WHOHAS: search target hash%d\n",i);
@@ -182,7 +182,7 @@ int process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *confi
     if (count == 0) {
 	DPRINTF(DEBUG_PROCESS_UDP, "process_inbound_WHOHAS: 0 matching hash found, do not send IAHVE packet back\n");
 	free(IHAVE_packet_info);
-	return 0;
+	return NULL;
     }
     
     // fill packet_info 
@@ -197,8 +197,9 @@ int process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *confi
     IHAVE_packet_info->type = (uint8)IHAVE;
     IHAVE_packet_info->header_len = HEADER_LEN;
     IHAVE_packet_info->packet_len = HEADER_LEN + BYTE_LEN + IHAVE_packet_info->hash_count * HASH_LEN;
+
+    IHAVE_packet_info->peer_list = packet_info->peer_list;
     
-    //IHAVE_packet_info->next = NULL;
 
     if (debug & DEBUG_PROCESS_UDP) {
 	printf("process_udp: make IAHVE_packet_info:\n");
@@ -206,10 +207,20 @@ int process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *confi
     }
 
     // enlist IHAVE_packet_info to the outbound_list
-    enlist(outbound_list, IHAVE_packet_info);
+    //outbound_list_en(IHAVE_packet_info);
 
-    return count;
+    return IHAVE_packet_info;
 }
+
+/* Save inbound DATA packet, and generate ACK packet  */
+struct packet_info_t *process_inbound_DATA(struct GET_request_t *GET_requeset, struct packet_info_t *info) {
+    
+    
+
+}
+
+
+
 
 int search_hash(uint8 *target_hash, struct id_hash_t *id_hash_list) {
     uint8 *has_hash;

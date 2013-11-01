@@ -197,13 +197,12 @@ void peer_run(bt_config_t *config) {
     fd_set readfds, writefds;
     struct user_iobuf *userbuf = NULL;
     struct GET_request_t *GET_request = NULL;
+    struct packet_info_t *reply_info = NULL;
+    struct packet_info_t *info = NULL;
     
     //cp2:
     //struct peer_to_slot_t *peer_to_slot = NULL;
     struct list_t *peer_list = NULL;
-    struct cong_list_t *cong_list = NULL;
-    struct flow_list_t *flow_list = NULL;
-
     
     if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) == -1) {
 	perror("peer_run could not create socket");
@@ -234,9 +233,7 @@ void peer_run(bt_config_t *config) {
 
     // all sorts of preparation
     parse_haschunkfile(config);
-    init_flow(&flow_list);
-    init_cong(&cong_list);
-    init_inout();
+    init_ctr();
 
     peer_list = exclude_self(config->peers, config->identity);
     DPRINTF(DEBUG_PEER, "peer_list:");
@@ -262,8 +259,9 @@ void peer_run(bt_config_t *config) {
 		// handle the GET requests already read, set sock in master_writefds 
 		// there is only one GET request
 		if ((GET_request = handle_line(userbuf->line_queue, peer_list)) != NULL) {
-
-		    ctr_enlist(GET_request->outbound_info_list);
+		    
+		    //ctr_enlist(GET_request->outbound_info_list);
+		    outbound_list_cat(GET_request->outbound_info_list);
 
 		    FD_SET(sock, &master_writefds); 
 
@@ -274,23 +272,37 @@ void peer_run(bt_config_t *config) {
 
 	    // all five kinds of packets
 	    if (FD_ISSET(sock, &readfds)) { 
+
 		DPRINTF(DEBUG_PEER, "sock, read\n");
-		ctr_recv(sock, config);
-		//process_inbound_udp(config, &(inbound_list)); // packet2info, check pac	
-		//FD_CLR(sock, &master_readfds);
-		FD_SET(sock, &master_writefds);
+		DPRINTF(DEBUG_PEER, "try general_recv:\n");
+
+		if ((info = general_recv(sock, config)) != NULL) {
+
+		    if (info->type == DATA){
+			DPRINTF(DEBUG_PEER, "general_recv: received DATA, save it\n");
+			reply_info = process_inbound_DATA(GET_request, info);
+			
+		    } else {
+			DPRINTF(DEBUG_PEER, "general_recv: received valid packet, fd_set sock in write_fds\n");
+			reply_info = info;
+		    }
+
+		    general_enlist(reply_info);
+		    FD_SET(sock, &master_writefds);
+		}
+
 	    }
 
 	    // all five kinds of packet
-	    // in cp1, only consider WHOHAS
 	    if (FD_ISSET(sock, &writefds)) {
-		// if it's WHOHAS packet, just send to all peers
-		DPRINTF(DEBUG_PEER, "sock, write\n");
 
-		if (ctr_send(sock) == 0) {
-		    DPRINTF(DEBUG_PEER, "left outbound_list is NULL, fd_clr sock from writefds\n");
+		DPRINTF(DEBUG_PEER, "sock, write\n");
+		
+		if (general_send(sock) == 0) {
+		    DPRINTF(DEBUG_PEER, "no more packet to send, fd_clr sock from writefds\n");
 		    FD_CLR(sock, &master_writefds);
 		}
+		
 
 	    }
 	}
