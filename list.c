@@ -58,24 +58,38 @@ struct list_t *init_list(struct list_t **list) {
     return *list;
 }
 
-struct list_t *cat_list(struct list_t *p, struct list_t *q) {
+struct list_t *cat_list(struct list_t **p, struct list_t **q) {
 
     assert(p != NULL);
     assert(q != NULL);
 
-    p->end->next = q->head;
-    p->end = q->end;
+    if ((*p)->length == 0) {
+	printf("cat_list: p is empty\n");
+	return *p = *q;
+    }
+    if ((*q)->length == 0) {
+	printf("cat_list: q is empty\n");
+	return *p;
+    }
 
-    p->length += q->length;
+    (*p)->end->next = (*q)->head;
+    (*p)->end = (*q)->end;
+
+    (*p)->length += (*q)->length;
     
-    return p;
+    return (*p);
 }
 
-void dump_list(struct list_t *list, void(*printer)(void *data), char *delim) {
+int dump_list(struct list_t *list, void(*printer)(void *data), char *delim) {
     struct list_item_t *item = NULL;
     
+    if (list == NULL) {
+	printf("NULL list\n");
+	return 0;
+    }	
+    
     if (list->length == 0 || list->head == NULL) 
-	printf("NULL list");
+	printf("empty list");
 
     item = list->head;
     while ( item != NULL) {
@@ -84,6 +98,8 @@ void dump_list(struct list_t *list, void(*printer)(void *data), char *delim) {
 	item = item->next;
     }
     printf("\n");
+
+    return 0;
 }
 
 struct list_item_t *get_iterator(struct list_t *list) {
@@ -93,9 +109,8 @@ struct list_item_t *get_iterator(struct list_t *list) {
 }
 
 int has_next(struct list_item_t *iterator) {
-    assert(iterator != NULL);
     
-    if (iterator->next == NULL)
+    if (iterator == NULL)
 	return 0;
     return 1;
 }
@@ -104,10 +119,12 @@ void *next(struct list_item_t **iterator) {
     assert(iterator != NULL);
     assert(*iterator != NULL);
 
+    void *data = NULL;
+
+    data = (*iterator)->data;
     *iterator = (*iterator)->next;
 
-    assert(*iterator != NULL);
-    return (*iterator)->data;
+    return data;
 }
 
 

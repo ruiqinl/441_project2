@@ -202,6 +202,7 @@ bt_peer_t *addr2peer(bt_config_t *config, struct sockaddr_in *addr) {
 		break;
 	    }
 	}
+	p = p->next;
     }
     
     if (!found) {

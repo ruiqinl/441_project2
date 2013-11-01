@@ -76,6 +76,7 @@ int send_info(int sock, struct packet_info_t *packet_info){
 	return -1;
     }
 
+    printf("send_info\n");
     while (has_next(iterator)) {
 	peer = next(&iterator);
 	assert(peer != NULL);
@@ -120,6 +121,7 @@ int process_inbound_udp(int sock, bt_config_t *config, struct list_t *outbound_l
     // handle packets of different types seperately
     switch(info->type) {
     case WHOHAS:
+	DPRINTF(DEBUG_PROCESS_UDP, "switch case WHOHAS\n");
 	process_inbound_WHOHAS(info, config, addr, addr_len, outbound_list);
 	break;
     case IHAVE:
