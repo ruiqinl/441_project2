@@ -65,11 +65,11 @@ struct list_t *cat_list(struct list_t **p, struct list_t **q) {
     assert(q != NULL);
 
     if ((*p)->length == 0) {
-	printf("cat_list: p is empty\n");
+	//printf("cat_list: p is empty\n");
 	return *p = *q;
     }
     if ((*q)->length == 0) {
-	printf("cat_list: q is empty\n");
+	//printf("cat_list: q is empty\n");
 	return *p;
     }
 

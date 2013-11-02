@@ -124,15 +124,13 @@ void parse_haschunkfile(bt_config_t *config) {
 
 struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile, struct list_t *peer_list) {
 
-    struct GET_request_t *GET_request;
-    //struct packet_info_t *WHOHAS_info_list;
-    struct list_t  *WHOHAS_info_list;
+    struct GET_request_t *GET_request = NULL;
+    struct list_t  *WHOHAS_info_list = NULL;
 
     DPRINTF(DEBUG_PEER, "handle_GET_request:\n");
     DPRINTF(DEBUG_PEER, "chunfile:%s, outputfile:%s\n\n", chunkfile, outputfile);
 
-    GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
-    init_GET_request(GET_request);
+    init_GET_request(&GET_request);
 
     parse_chunkfile(GET_request, chunkfile);
 
@@ -198,8 +196,8 @@ void peer_run(bt_config_t *config) {
     struct user_iobuf *userbuf = NULL;
     struct GET_request_t *GET_request = NULL;
     struct packet_info_t *reply_info = NULL;
-    struct packet_info_t *info = NULL;
-    
+    struct packet_info_t *recv_info = NULL;
+
     //cp2:
     //struct peer_to_slot_t *peer_to_slot = NULL;
     struct list_t *peer_list = NULL;
@@ -276,19 +274,14 @@ void peer_run(bt_config_t *config) {
 		DPRINTF(DEBUG_PEER, "sock, read\n");
 		DPRINTF(DEBUG_PEER, "try general_recv:\n");
 
-		if ((info = general_recv(sock, config)) != NULL) {
-
-		    if (info->type == DATA){
-			DPRINTF(DEBUG_PEER, "general_recv: received DATA, save it\n");
-			reply_info = process_inbound_DATA(GET_request, info);
-			
-		    } else {
-			DPRINTF(DEBUG_PEER, "general_recv: received valid packet, fd_set sock in write_fds\n");
-			reply_info = info;
+		if ((recv_info = general_recv(sock, config)) != NULL) {
+		    
+		    reply_info = process_inbound_udp(recv_info, sock, config, GET_request);
+		    // if reply_info == NULL, no need to reply
+		    if (reply_info != NULL) {
+			general_enlist(reply_info);
+			FD_SET(sock, &master_writefds);
 		    }
-
-		    general_enlist(reply_info);
-		    FD_SET(sock, &master_writefds);
 		}
 
 	    }

@@ -51,7 +51,8 @@ struct packet_info_t {
     uint8 hash_count;
     uint8 *hash_chunk;
     
-    //struct addr_t* addr_list;
+    // two usage: if it's outbound packet, peer_list is destinations
+    // if it's inbound udp, peer_list is replaced by source peer
     struct list_t *peer_list;
 
     //struct packet_info_t *next;
@@ -64,25 +65,24 @@ struct slot_t {
     char hash_str[HASH_STR_LEN+1];
     uint8 hash_hex[HASH_LEN];
     
-    struct peer_t *peer_list; // var length of peers, which graually grows by analyzing IHAVE_packet received, and the analysis is done in GET_req_t
+    struct list_t *peer_list; // var length of peers, which graually grows by analyzing IHAVE_packet received, and the analysis is done in GET_req_t
     struct peer_t *selected_peer; // select peer, slot to peer
     
-    struct packet_info_t *GET_packet_info;
-    struct packet_info_t *DATA_packet_info;
-    struct packet_info_t *ACK_packet_info;
-    struct packet_info_t *DENIED_packet_info;
+    struct packet_info_t *info;
 };
 
-struct peer_to_slot_t {
-    // how to get peerlist ?
-
+struct peer_slot_t {
+    int peer_id;
+    int slot_ind;
 };
 
+/*
 struct peer_t {
-    bt_peer_t bt_peer;
-    int slot;
+   bt_peer_t bt_peer;
+    //int slot;
     struct peer_t *next;
 };
+*/
 
 struct id_hash_t {
     int id;
@@ -93,23 +93,14 @@ struct id_hash_t {
 
 struct GET_request_t {
 
-    int slot_count;
-    struct slot_t *slot_array[MAX_SLOT_COUNT];
+    struct list_t *slot_list;
 
     struct list_t *id_hash_list;
 
-    struct list_t *peer_list;
-    struct peer_to_slot_t peer_to_slot; // for demultiplexing, and prevent simutaneous download from a peer
-    
-    // cp1
-    //struct packet_info_t *inbound_list; // all five kinds of packets
-    //struct packet_info_t *outbound_list; // all five kinds of packets
+    struct list_t *peer_slot_list; // for demultiplexing, and prevent simutaneous download from a peer
 
-    // cp2
     struct list_t *outbound_info_list;
-    struct list_t *inbound_info_list;
     
-    //struct GET_request_t *next;
 };
 
 
@@ -125,7 +116,7 @@ uint8 *array2chunk(struct GET_request_t *GET_request, int slot_begin, int slot_e
 void info_printer(void *packet_info);
 void dump_hex(uint8 *hex);
 
-void init_GET_request(struct GET_request_t *p);
+void init_GET_request(struct GET_request_t **p);
 void enlist_packet_info(struct packet_info_t **packet_info_list, struct packet_info_t *packet_info);
 struct packet_info_t *delist_packet_info(struct packet_info_t **list);
 //void dump_info_list(struct packet_info_t *list);
@@ -134,5 +125,10 @@ struct packet_info_t *delist_packet_info(struct packet_info_t **list);
 void enlist_id_hash(struct id_hash_t **id_hash_list, struct id_hash_t *id_hash);
 struct id_hash_t *delist_id_hash(struct id_hash_t **list);
 void dump_id_hash_list(struct id_hash_t *list);
+
+struct slot_t *get_slot(struct list_t *peer_to_slot, bt_peer_t *peer);
+void init_slot(struct slot_t **p);
+void init_packet_info(struct packet_info_t **p);
+void init_slot(struct slot_t **p);
 
 #endif

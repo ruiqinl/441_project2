@@ -10,6 +10,7 @@
 #include "list.h"
 #include "ctr_send_recv.h"
 #include "debug.h"
+#include "spiffy.h"
 
 /* one outbound_list for out non-data packet, a list of data_wnd for out data packet
  * one inbound_list for in packet, a list of flow_wnd for in data packet
@@ -174,6 +175,8 @@ int outbound_list_en(void *data) {
 }
 
 int general_enlist(struct packet_info_t *info) {
+    assert(info != NULL);
+
     switch(info->type) {
     case WHOHAS:
     case IHAVE:
@@ -239,33 +242,34 @@ int ctr_send(int sock) {
 }
 */
 
-/* Recv packet, process it, generate reply packet_info
- * Return the reply packet_info, return NULL on nothing to reply
- */
+/* Recv packet, return packet_info */
 struct packet_info_t *general_recv(int sock, bt_config_t *config) {
 
+    uint8 buf[MAX_PACKET_LEN+1];
+    socklen_t addr_len;
+    struct sockaddr_in *addr = NULL;
     struct packet_info_t *info = NULL;
+    bt_peer_t *peer = NULL;
     
-    info = process_inbound_udp(sock, config);
-    switch (info->type) {
-    case WHOHAS:
-	return process_inbound_WHOHAS(info, config);
-	break;
-    case IHAVE:
-    case GET:
-    case ACK:
-    case DENIED:
-    case DATA:
-	process_inbound_DATA(info, config);
-	return NULL;
-	break;
-    default:
-	DPRINTF(DEBUG_CTR, "general_recv: wrong type\n");
-	return NULL;
-	break;
+    addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in));
+    addr_len = sizeof(struct sockaddr);    
+    
+    spiffy_recvfrom(sock, buf, MAX_PACKET_LEN, 0, (struct sockaddr *)addr, &addr_len);
+    
+    info = packet2info(buf);
+
+    // identify the peer sending the packet
+    peer = addr2peer(config, addr); 
+    init_list(&(info->peer_list));
+    enlist(info->peer_list, peer);
+    assert(info->peer_list->length == 1);
+
+    if (debug & DEBUG_PROCESS_UDP) {
+	printf("\nprocess_inboud_udp: received packet\n");
+	info_printer(info);
     }
 
-    return 0;
+    return info;
 }
 
 

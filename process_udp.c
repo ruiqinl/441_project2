@@ -115,36 +115,42 @@ int send_packet(bt_peer_t *peer, uint8 *packet, int packet_len, int sock) {
     return 1;
 }
 
-/* Convert packet into packet_info, and save sender's addr 
- * Return pointer to packet_info 
+/* Process inbound packet based on packet type
+ * Return reply packet, return NULL if no need to reply
  */
-struct packet_info_t *process_inbound_udp(int sock, bt_config_t *config) {
+struct packet_info_t *process_inbound_udp(struct packet_info_t *info, int sock, bt_config_t *config, struct GET_request_t *GET_request) {
     
-    uint8 buf[MAX_PACKET_LEN+1];
-    socklen_t addr_len;
-    struct sockaddr_in *addr = NULL;
-    struct packet_info_t *info = NULL;
-    bt_peer_t *peer = NULL;
-    
-    addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in));
-    addr_len = sizeof(struct sockaddr);    
-    
-    spiffy_recvfrom(sock, buf, MAX_PACKET_LEN, 0, (struct sockaddr *)addr, &addr_len);
-    
-    info = packet2info(buf);
-
-    // identify the peer sending the packet
-    peer = addr2peer(config, addr); 
-    init_list(&(info->peer_list));
-    enlist(info->peer_list, peer);
-    assert(info->peer_list->length == 1);
-
-    if (debug & DEBUG_PROCESS_UDP) {
-	printf("\nprocess_inboud_udp: received packet\n");
-	info_printer(info);
+    switch (info->type) {
+    case WHOHAS:
+	return process_inbound_WHOHAS(info, config);
+	break;
+    case IHAVE:
+	return process_inbound_IHAVE(info, GET_request);
+	break;
+    case GET:
+	printf("process_inbound_udp: GET, not implemted yet\n");
+	return NULL;
+	break;
+    case ACK:
+	printf("process_inbound_udp: ACK, not implemted yet\n");
+	return NULL;
+	break;
+    case DENIED:
+	printf("process_inbound_udp: DENIED, not implemted yet\n");
+	return NULL;
+	break;
+    case DATA:
+	printf("process_inbound_udp: DENIED, not implemted yet\n");
+	return NULL;
+	break;
+    default:
+	DPRINTF(DEBUG_CTR, "general_recv: wrong type\n");
+	return NULL;
+	break;
     }
 
-    return info;
+    return 0;
+
 }
 
 /* Parse WHOHAS pacekt and make IHAVE packet info
@@ -212,10 +218,55 @@ struct packet_info_t *process_inbound_WHOHAS(struct packet_info_t *packet_info, 
     return IHAVE_packet_info;
 }
 
+/* Always return NULL, since there is no need to reply */
+struct packet_info_t *process_inbound_IHAVE(struct packet_info_t *info, struct GET_request_t *GET_request) {
+    
+    compare_hash(GET_request->slot_list, info);
+
+    return NULL;
+}
+
+void compare_hash(struct list_t *slot_list, struct packet_info_t *info) {
+    
+    struct list_item_t *iterator = NULL;
+    struct slot_t *slot = NULL;
+    uint8 *slot_hash = NULL;
+    uint8 *info_hash = NULL;
+    int i, count;
+    
+    count = 0;
+    iterator = get_iterator(slot_list);
+    while (has_next(iterator)) {
+	slot = next(&iterator);
+	slot_hash = slot->hash_hex;
+
+	DPRINTF(DEBUG_PROCESS_UDP, "compare_hash: slot_%d:", count);
+	dump_hex(slot->hash_hex);
+	
+	for (i = 0; i < info->hash_count; i++) {
+	    info_hash = info->hash_chunk + (i * HASH_LEN);
+	    
+	    DPRINTF(DEBUG_PROCESS_UDP, "compare_hash: info_hash_%d:", i);
+	    dump_hex(info_hash);
+	    if (memcmp(slot_hash, info_hash, HASH_LEN) == 0) {
+		cat_list(&(slot->peer_list), &(info->peer_list));
+		DPRINTF(DEBUG_PROCESS_UDP, "compare_hash: matching hash found, enlist peer to slot_%d\n", count);
+		break;
+	    }
+	}
+	
+	if (i == info->hash_count)
+	    DPRINTF(DEBUG_PROCESS_UDP, "compare_hash: no matching hash\n");
+	++count;
+    }
+    
+}
+
 /* Save inbound DATA packet, and generate ACK packet  */
 struct packet_info_t *process_inbound_DATA(struct GET_request_t *GET_requeset, struct packet_info_t *info) {
     
-    
+    printf("process_inbound_DATA not implemented yet\n");
+    return NULL;
 
 }
 

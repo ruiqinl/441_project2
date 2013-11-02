@@ -18,11 +18,13 @@ struct list_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request, struc
     struct list_t *packet_info_list = NULL;
     int list_size, i, packet_len;
     int slot_begin, slot_end; // indices of first and off-1 slots    
-    
-    if (GET_request->slot_count % MAX_HASH != 0)
-	list_size = GET_request->slot_count / MAX_HASH + 1; 
+    int slot_count;
+
+    slot_count = GET_request->slot_list->length;
+    if ( slot_count % MAX_HASH != 0)
+	list_size = slot_count / MAX_HASH + 1; 
     else
-	list_size = GET_request->slot_count / MAX_HASH; 
+	list_size = slot_count / MAX_HASH; 
     
     init_list(&packet_info_list);
 	    
@@ -30,8 +32,8 @@ struct list_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request, struc
     for (i = 0; i < list_size; i++) {
 	slot_begin = i * MAX_HASH;
 	slot_end = (i+1) * MAX_HASH; // does not include slot_end
-	if (slot_end > GET_request->slot_count)
-	    slot_end = GET_request->slot_count;
+	if (slot_end > slot_count)
+	    slot_end = slot_count;
 
 	// first figure out size of the packet_info
 	packet_len = (slot_end - slot_begin) * HASH_LEN + BYTE_LEN + HEADER_LEN;
@@ -107,7 +109,7 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
     
     FILE *fp;
     char *p, *p1;
-    struct slot_t *slot_p;
+    struct slot_t *slot = NULL;
     char *buf_p;
     int buf_len = 1024;
     char id_buf[8];
@@ -127,11 +129,6 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 
 	DPRINTF(DEBUG_PACKET, "parse_chunkfile: p:%s", p);
 
-	if (++(GET_request->slot_count) == MAX_SLOT_COUNT) {
-	    DPRINTF(DEBUG_PACKET, "parse_chunkfile: slot_chunk == MAX_SLOT_COUNT, \n");
-	    count = 0;
-	}
-
 	if (strchr(p, '\n') == NULL) {
 	    DPRINTF(DEBUG_PACKET, "ERROR! parse_chunfile, fgets: line length of chunfile is greater than buf_len:%d\n", buf_len);
 	    exit(-1);
@@ -142,14 +139,15 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 	    exit(-1);
 	}
 
-
-	slot_p = (struct slot_t *)calloc(1, sizeof(struct slot_t));
-	GET_request->slot_array[GET_request->slot_count-1] = slot_p;
-	//init_slot(slot_p);// nothing to init
+	
+	init_slot(&slot);
+	enlist(GET_request->slot_list, slot);
+	//slot_p = (struct slot_t *)calloc(1, sizeof(struct slot_t));
+	//GET_request->slot_array[GET_request->slot_count-1] = slot_p;
 	
 	strncpy(id_buf, p, p1-p);
-	slot_p->hash_id = atoi(id_buf);
-	DPRINTF(DEBUG_PACKET, "slot_p->hash_id:%d\n", slot_p->hash_id);
+	slot->hash_id = atoi(id_buf);
+	DPRINTF(DEBUG_PACKET, "slot->hash_id:%d\n", slot->hash_id);
 	
 	p = p1 + 1;
 	p1 = strchr(p, '\n'); // should not be null
@@ -157,14 +155,14 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 	    DPRINTF(DEBUG_PACKET, "ERROR! parse_chunkfile: p1-p != HASH_STR_LEN\n");
 	    exit(-1);
 	}
-	strncpy(slot_p->hash_str, p, HASH_STR_LEN);
-	slot_p->hash_str[HASH_STR_LEN] = '\0';
-	DPRINTF(DEBUG_PACKET, "slot_p->hash-str:%s\n", slot_p->hash_str);
+	strncpy(slot->hash_str, p, HASH_STR_LEN);
+	slot->hash_str[HASH_STR_LEN] = '\0';
+	DPRINTF(DEBUG_PACKET, "slot->hash-str:%s\n", slot->hash_str);
 
-	str2hex(slot_p->hash_str, slot_p->hash_hex);
+	str2hex(slot->hash_str, slot->hash_hex);
 	if (debug & DEBUG_PACKET) {
-	    printf("slot_p->hash_hex:");
-	    dump_hex(slot_p->hash_hex); 
+	    printf("slot->hash_hex:");
+	    dump_hex(slot->hash_hex); 
 	    printf("\n");
 	}
 	
@@ -174,8 +172,12 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 
 }
 
-void init_GET_request(struct GET_request_t *p) {
-    // nothing to do
+void init_GET_request(struct GET_request_t **p) {
+    *p = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
+
+    init_list(&((*p)->slot_list));
+    init_list(&((*p)->id_hash_list));
+    init_list(&((*p)->peer_slot_list));
 }
 
 /* parse packet, save fields into  packet_info_t */
@@ -329,6 +331,7 @@ uint8 *array2chunk(struct GET_request_t *GET_request, int slot_begin, int slot_e
     uint8 *chunk, *p;
     int chunk_size, i, j;
     int slot_count;
+    struct slot_t *slot = NULL;
 
     slot_count = slot_end - slot_begin + 1;
     chunk_size = slot_count * HASH_LEN;
@@ -337,7 +340,9 @@ uint8 *array2chunk(struct GET_request_t *GET_request, int slot_begin, int slot_e
 
     j = 0;
     for (i = slot_begin; i < slot_end; i++, j++) {
-	memcpy(p + j*HASH_LEN, GET_request->slot_array[i]->hash_hex, HASH_LEN);
+	slot = list_ind(GET_request->slot_list, i);
+	memcpy(p + j*HASH_LEN, slot->hash_hex, HASH_LEN);
+	//memcpy(p + j*HASH_LEN, GET_request->slot_array[i]->hash_hex, HASH_LEN);
     }
 
     return chunk;
@@ -428,8 +433,37 @@ void dump_id_hash_list(struct id_hash_t *list) {
     }
 }
 
+/*
+struct slot_t *get_slot(struct list_t *peer_slot_list, bt_peer_t *peer) {
+    
+    struct list_item_t *iterator = NULL;
+    struct peer_slot_t *peer_slot = NULL;
+    
+    iterator = get_iterator(peer_slot_list);
+    while (has_next(iterator)) {
+	peer_slot = next(iterator);
+	if (peer_slot->peer_id = peer->id)
+	    ????
+    }
+
+}
+*/
+
+void init_packet_info(struct packet_info_t **p) {
+    (*p) = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
+
+    (*p)->hash_chunk = NULL;
+    init_list(&((*p)->peer_list));
+}
 
 
+void init_slot(struct slot_t **p) {
+    (*p) = (struct slot_t *)calloc(1, sizeof(struct slot_t));
+
+    init_list(&((*p)->peer_list));
+    (*p)->selected_peer = NULL;
+    init_packet_info(&((*p)->info));
+}
 
 
 #ifdef _TEST_PACKET_
@@ -444,7 +478,7 @@ int main(){
     uint8 *packet;
 
     GET_request = (struct GET_request_t *)calloc(1, sizeof(struct GET_request_t));
-    init_GET_request(GET_request);
+    init_GET_request(&GET_request);
 
     parse_chunkfile(GET_request, "A.chunks");
 
