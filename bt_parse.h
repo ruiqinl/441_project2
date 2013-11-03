@@ -27,8 +27,8 @@ typedef struct bt_peer_s {
 } bt_peer_t;
 
 struct bt_config_s {
-    char  chunk_file[BT_FILENAME_LEN];
-    char  has_chunk_file[BT_FILENAME_LEN];
+    char  chunk_file[BT_FILENAME_LEN]; // C.masterchunks
+    char  has_chunk_file[BT_FILENAME_LEN]; // A/B.haschunks
     char  output_file[BT_FILENAME_LEN];
     char  peer_list_file[BT_FILENAME_LEN];
     int   max_conn;
@@ -40,7 +40,7 @@ struct bt_config_s {
 
     bt_peer_t *peers;
 
-    struct id_hash_t *id_hash_list;
+    struct list_t *id_hash_list; // has_chunk_file id_hash, it's what this peer has, pay attention to its difference from GET_req->id_hash_list
     
 };
 typedef struct bt_config_s bt_config_t;
@@ -54,5 +54,7 @@ bt_peer_t *bt_peer_info(const bt_config_t *c, int peer_id);
 void peer_printer(void *peer);
 bt_peer_t *addr2peer(bt_config_t *c, struct sockaddr_in *addr);
 int peerlist_id(struct list_t *list);
+
+
 
 #endif /* _BT_PARSE_H_ */

@@ -32,6 +32,9 @@ void bt_init(bt_config_t *config, int argc, char **argv) {
   strcpy(config->peer_list_file, "nodes.map");
   config->argc = argc;
   config->argv = argv;
+
+  config->peers = NULL;
+  init_list(&(config->id_hash_list));
 }
 
 void bt_usage() {

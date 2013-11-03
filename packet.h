@@ -27,6 +27,8 @@
 #define HEADER_LEN 16
 #define BYTE_LEN 4
 #define HASH_STR_LEN 40
+#define CHUNK_SIZE (512*1024)
+#define MAX_DATA (MAX_PACKET_LEN - HEADER_LEN)
 
 #define INIT_ARRAY_SIZE 128
 
@@ -55,6 +57,7 @@ struct packet_info_t {
     // not necessarily to be used
     uint8 hash_count;
     uint8 *hash_chunk;
+    uint8 *data_chunk;
     
     // two usage: if it's outbound packet, peer_list is destinations
     // if it's inbound udp, peer_list is replaced by source peer
@@ -103,7 +106,7 @@ struct GET_request_t {
 
     struct list_t *slot_list;
 
-    struct list_t *id_hash_list;
+    struct list_t *id_hash_list; // chunk_file id_hash, it's what this GET_req wanna fetch, pay attention to its diff from config->id_hash_list
 
     struct list_t *peer_slot_list; // for demultiplexing, and prevent simutaneous download from a peer
 
@@ -146,6 +149,9 @@ bt_peer_t *select_peer(struct slot_t *slot, struct list_t *peer_slot_list);
 int in_peer_slot_list(int peer_id, struct list_t *peer_slot_list);
 struct list_t *make_single_WHOHAS_info(uint8 *hash, struct list_t *peer_list);
 void init_peer_slot(struct peer_slot_t **ps);
+struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list);
 
+uint8 *fetch_data(char *chunk_file, int hash_id);
+int hash2id(uint8 *hash, struct list_t *id_hash_list);
 
 #endif

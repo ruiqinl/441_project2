@@ -118,7 +118,11 @@ int send_packet(bt_peer_t *peer, uint8 *packet, int packet_len, int sock) {
 /* Process inbound packet based on packet type
  * Return reply packet, return NULL if no need to reply
  */
-struct packet_info_t *process_inbound_udp(struct packet_info_t *info, int sock, bt_config_t *config, struct GET_request_t *GET_request) {
+struct list_t  *process_inbound_udp(struct packet_info_t *info, int sock, bt_config_t *config, struct GET_request_t *GET_request) {
+
+    assert(info != NULL);
+    assert(config != NULL);
+    //assert(GET_request != NULL);// cannot assume this
     
     switch (info->type) {
     case WHOHAS:
@@ -128,8 +132,7 @@ struct packet_info_t *process_inbound_udp(struct packet_info_t *info, int sock, 
 	return process_inbound_IHAVE(info, GET_request);
 	break;
     case GET:
-	printf("process_inbound_udp: GET, not implemted yet\n");
-	return NULL;
+	return process_inbound_GET(info, config);
 	break;
     case ACK:
 	printf("process_inbound_udp: ACK, not implemted yet\n");
@@ -140,7 +143,7 @@ struct packet_info_t *process_inbound_udp(struct packet_info_t *info, int sock, 
 	return NULL;
 	break;
     case DATA:
-	printf("process_inbound_udp: DENIED, not implemted yet\n");
+	printf("process_inbound_udp: DATA, not implemted yet\n");
 	return NULL;
 	break;
     default:
@@ -153,14 +156,43 @@ struct packet_info_t *process_inbound_udp(struct packet_info_t *info, int sock, 
 
 }
 
+struct list_t *process_inbound_GET(struct packet_info_t *info, bt_config_t *config) {
+
+    int id = -1;
+    uint8 *data = NULL;
+    struct list_t *info_list = NULL;
+
+    assert(info != NULL);
+    assert(config != NULL);
+
+    if((id = hash2id(info->hash_chunk, config->id_hash_list)) == -1){
+	DPRINTF(DEBUG_PROCESS_UDP, "process_inbound_GET: Error! cannot find matching hash, no DATA packet is made\n");
+	return NULL;
+    }
+
+    data = fetch_data(config->chunk_file, id);
+    if (data == NULL) {
+	DPRINTF(DEBUG_PROCESS_UDP, "Warning! fetched no data, no DATA_packet is made\n");
+	return NULL;
+    }
+    
+    info_list = make_DATA_info(data, info->peer_list);
+
+    //data_wnd_list_cat(info_list);
+
+    return info_list;
+}
+
+
 /* Parse WHOHAS pacekt and make IHAVE packet info
  * Return pointer to IHAVE pacekt info on success, return NULL if IAHVE packet info is empty
  */
-struct packet_info_t *process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *config) {
+struct list_t *process_inbound_WHOHAS(struct packet_info_t *packet_info, bt_config_t *config) {
 
     uint8 *target_hash = NULL;
     uint8 *chunk_p = NULL;
     struct packet_info_t *IHAVE_packet_info = NULL;
+    struct list_t *ret_list = NULL;
     uint8 chunk_data[MAX_PACKET_LEN];
     int count = 0;
     int i;
@@ -215,12 +247,17 @@ struct packet_info_t *process_inbound_WHOHAS(struct packet_info_t *packet_info, 
     // enlist IHAVE_packet_info to the outbound_list
     //outbound_list_en(IHAVE_packet_info);
 
-    return IHAVE_packet_info;
+    init_list(&ret_list);
+    enlist(ret_list, IHAVE_packet_info);
+
+    return ret_list;
 }
 
 /* Always return NULL, since there is no need to reply */
-struct packet_info_t *process_inbound_IHAVE(struct packet_info_t *info, struct GET_request_t *GET_request) {
-    
+struct list_t *process_inbound_IHAVE(struct packet_info_t *info, struct GET_request_t *GET_request) {
+    assert(info != NULL);
+    assert(GET_request != NULL);
+
     compare_hash(GET_request->slot_list, info);
 
     return NULL;
@@ -280,17 +317,23 @@ struct packet_info_t *process_inbound_DATA(struct GET_request_t *GET_requeset, s
 
 
 
+int search_hash(uint8 *target_hash, struct list_t *id_hash_list) {
+    assert(target_hash != NULL);
+    assert(id_hash_list != NULL);
 
-int search_hash(uint8 *target_hash, struct id_hash_t *id_hash_list) {
-    uint8 *has_hash;
-    struct id_hash_t *id_hash;
+    uint8 *has_hash = NULL;
+    struct list_item_t *ite = NULL;
+    struct id_hash_t *id_hash = NULL;
     int match;
 
     match = 0;
     has_hash = (uint8 *)calloc(HASH_LEN, sizeof(uint8));
     
-    id_hash = id_hash_list;
-    while (id_hash != NULL) {
+    //id_hash = id_hash_list;
+    ite = get_iterator(id_hash_list);
+    while (has_next(ite)) {
+	id_hash = next(&ite);
+
 	str2hex(id_hash->hash_string, has_hash);
 
 	if (debug & DEBUG_PROCESS_UDP) {
@@ -303,10 +346,9 @@ int search_hash(uint8 *target_hash, struct id_hash_t *id_hash_list) {
 	    break;
 	}
 	
-	id_hash = id_hash->next;
     }
 
-    free(has_hash);
+    //free(has_hash);
     return match;
 }
 

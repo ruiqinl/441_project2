@@ -58,6 +58,21 @@ void init_flow_wnd(struct flow_wnd_t **wnd) {
     
 }
 
+void check_out_size() {
+    long size = 0;
+    struct list_item_t *ite = NULL;
+    struct data_wnd_t *wnd = NULL;
+    
+    ite = get_iterator(data_wnd_list);
+    while (has_next(ite)) {
+	wnd = next(&ite);
+	size += wnd->packet_list->length;
+    }
+
+    size += outbound_list->length;
+    
+}
+
 int enlist_data_wnd(struct data_wnd_t *wnd, struct packet_info_t *info) {
     int id;
     
@@ -81,24 +96,32 @@ int enlist_data_wnd(struct data_wnd_t *wnd, struct packet_info_t *info) {
 	return 0;
 }
 
+/* return #left packet, so select knows if sock needs to be cleared from writefds
+ * return -1 on error
+ */
 int general_send(int sock) {
-    int count = 0;
+    int count;
 
+    // send
     printf("general_send: try outbound_list_send:\n");
     if ((count = outbound_list_send(sock)) != 0) {
 	assert(count == 1);
 	printf("general_send: outbound_list_send sends a packet\n");
-	return 0;
+    } else {
+	printf("general_send: try data_wnd_list_send:\n");
+	if ((count = data_wnd_list_send(sock)) != 0) {
+	    assert(count == 1);
+	    printf("general_send: data_wnd_list_send sends a packet\n");
+	}
     }
 
-    printf("general_send: try data_wnd_list_send:\n");
-    if ((count = data_wnd_list_send(sock)) != 0) {
-	assert(count == 1);
-	printf("general_send: data_wnd_list_send sends a packet\n");
+    return more_out();
+}
+
+int more_out() {
+    if (outbound_list->length == 0 && data_wnd_list->length == 0)
 	return 0;
-    }
-    
-    return 0;
+    return 1;
 }
 
 /* Return -1 on type error, 0 on sending no packets, 1 on sending a packet */
@@ -115,15 +138,25 @@ int outbound_list_send(int sock) {
 int data_wnd_list_send(int sock) {
     struct data_wnd_t *data_wnd = NULL;
     struct list_item_t *iterator = NULL;
+    struct list_item_t *old_iterator = NULL;
 
     iterator = get_iterator(data_wnd_list);
         
     while (has_next(iterator)) {
+
+	old_iterator = iterator;
+
 	data_wnd = next(&iterator);
-	printf("data_wnd_list_send: wnd_%d\n", data_wnd->connection_peer_id);
-	if (data_wnd_send(sock, data_wnd) == 1) {
-	    // send a packet inside data_list out
-	    return 1;
+	printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
+	if (data_wnd->length == 0) {
+	    printf("wnd_%d is empty, delist it\n", data_wnd->connection_peer_id);
+	    delist_item(data_wnd_list, old_iterator);
+	} else {
+	    printf("wnd_%d is not empty, send it\n", data_wnd->connection_peer_id);
+	    if (data_wnd_send(sock, data_wnd) == 1) {
+		// send a packet inside data_list out
+		return 1;
+	    }
 	}
     }
 
@@ -167,8 +200,9 @@ int outbound_list_cat(struct list_t *out_list) {
     if (out_list == NULL)
 	return 0;
 
-    if (cat_list(&outbound_list, &out_list) != NULL)
+    if (cat_list(&outbound_list, &out_list) != NULL) {
 	return 0;
+    }
 
     return -1;
 }
@@ -177,10 +211,28 @@ int outbound_list_cat(struct list_t *out_list) {
 int outbound_list_en(void *data) {
     assert(data != NULL);
     assert(outbound_list != NULL);
-
-    if (enlist(outbound_list, data) != NULL)
+    
+    if (enlist(outbound_list, data) != NULL) {
 	return 0;
+    }
     return -1;
+}
+
+int general_list_cat(struct list_t *info_list) {
+
+    assert(info_list != NULL);// could be empty
+
+    struct list_item_t *ite = NULL;
+    struct packet_info_t *info = NULL;
+
+    ite = get_iterator(info_list);
+    while (has_next(ite)) {
+	info = next(&ite);
+
+	general_enlist(info);
+    }
+
+    return 0;
 }
 
 int general_enlist(struct packet_info_t *info) {
@@ -207,6 +259,24 @@ int general_enlist(struct packet_info_t *info) {
     return 0;
 }
 
+/* enlist a data packet list */
+int data_wnd_list_cat(struct list_t *info_list) {
+    assert(info_list != NULL);
+    assert(info_list->length > 0);
+
+    struct list_item_t *ite = NULL;
+    struct packet_info_t *info = NULL;
+    
+    ite = get_iterator(info_list);
+    while (has_next(ite)) {
+	info = next(&ite);
+
+	data_wnd_list_en(info);
+    }
+    
+    return 0;
+}
+
 /* Enlist DATA packet_info
  * Find an existing wnd_list, or create one
  */
@@ -225,7 +295,7 @@ int data_wnd_list_en(struct packet_info_t *info) {
 	if (id == data_wnd->connection_peer_id) {
 	    DPRINTF(DEBUG_CTR, "data_wnd_list_en: find existing data_wnd with id=%d\n", id);
 	    enlist_data_wnd(data_wnd, info);
-	    
+
 	    found = 1;
 	    break;
 	}
@@ -245,16 +315,10 @@ int data_wnd_list_en(struct packet_info_t *info) {
 }
 
 
-/* Traverse send_list, base on packet_info type to decide put each packet_info to outbound_list directly, or  
-int ctr_send(int sock) {
-
-    return process_outbound_udp(sock, outbound_list);
-
-}
-*/
-
-/* Recv packet, return packet_info */
+/* Recv packet, replace peer_list with the sending peer, return packet_info */
 struct packet_info_t *general_recv(int sock, bt_config_t *config) {
+    
+    assert(config != NULL);
 
     uint8 buf[MAX_PACKET_LEN+1];
     socklen_t addr_len;
@@ -276,7 +340,7 @@ struct packet_info_t *general_recv(int sock, bt_config_t *config) {
     assert(info->peer_list->length == 1);
 
     if (debug & DEBUG_PROCESS_UDP) {
-	printf("\nprocess_inboud_udp: received packet\n");
+	printf("\ngeneral_recv: received packet\n");
 	info_printer(info);
     }
 

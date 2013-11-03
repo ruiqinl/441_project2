@@ -63,6 +63,62 @@ void *delist(struct list_t *list) {
     return data;
 }
 
+int delist_item(struct list_t *list, struct list_item_t *item) {
+    assert(list != NULL);
+    assert(item != NULL);
+    assert(list->length != 0);
+
+    struct list_item *prev = NULL;
+
+    if (item == list->head) {
+	// item is head
+	if (list->length == 1) {
+	    // empty this list
+	    list->head = NULL;
+	    list->end = NULL;
+	    list->length = NULL;
+	} else {
+	    // head to next
+	    list->head = list->head->next;
+	    item->next = NULL;
+	    list->length -= 1;
+	}
+	return 0;
+    }
+
+    if (item == list->end) {
+	if (list->length == 1) {
+	    // empty this list
+	    list->head = NULL;
+	    list->end = NULL;
+	    list->length = NULL;
+	} else {
+	    prev = list_ind_item(list, list->length-2);
+	    prev->next = NULL;
+	    list->end = prev;
+	    list->length -= 1;
+	}
+	return 0;
+    }
+
+
+}
+
+struct list_item_t *list_ind_item(struct list_t *list, int ind) {
+    assert(list != 0);
+    assert(ind >= 0);
+    assert(ind < list->length);
+
+    struct list_item_t *p = list->head;
+    int count = 0;
+
+    while (count++ != ind) {
+	assert(p != NULL);
+	p = p->next;
+    }
+    return p;
+}
+
 struct list_t *init_list(struct list_t **list) {
     *list = (struct list_t *)calloc(1, sizeof(struct list_t));
     

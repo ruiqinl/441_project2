@@ -5,6 +5,8 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <assert.h>
+#include <fcntl.h>
+#include <unistd.h>
 #include "bt_parse.h"
 #include "list.h"
 #include "packet.h"
@@ -104,22 +106,27 @@ uint8 *info2packet(struct packet_info_t *packet_info){
 	packet += 3;	
 	
 	chunksize = packet_info->hash_count * HASH_LEN;
+	memcpy(packet, packet_info->hash_chunk, chunksize);
 	break;
 
     case GET:
+	chunksize = packet_info->packet_len - packet_info->header_len;
+	memcpy(packet, packet_info->hash_chunk, chunksize);
+	break;
     case DATA:
+	chunksize = packet_info->packet_len - packet_info->header_len;
+	memcpy(packet, packet_info->data_chunk, chunksize);
+	break;
     case ACK:
     case DENIED:
-	chunksize = packet_info->packet_len - packet_info->header_len;
+	// do nothing
 	break;
-
     default:
 	DPRINTF(DEBUG_PACKET, "info2packet: Warning! wrong packet type\n");
-	chunksize = 0;
 	break;
     }
 
-    memcpy(packet, packet_info->hash_chunk, chunksize);
+    
     
     return packet_head;
 }
@@ -234,7 +241,7 @@ struct packet_info_t *packet2info(uint8 *packet) {
     
     uint32 ack_num = *(uint32 *)p;
     packet_info->ack_num = ntohl(ack_num);
-    p += 4;
+    p += 4;    
 
     chunk_size = packet_info->packet_len - packet_info->header_len;
     
@@ -247,22 +254,22 @@ struct packet_info_t *packet2info(uint8 *packet) {
 	chunk_size -= 4;
 	// hash_chunk
 	packet_info->hash_chunk = (uint8 *)calloc(chunk_size, sizeof(uint8));
-	memcpy(packet_info->hash_chunk, p, chunk_size);	
+	memcpy((packet_info->hash_chunk), p, chunk_size);	
 	break;
     case GET:
-	packet_info->hash_count = 0; // actually no such field 
+	
+	//packet_info->hash_count = 0; // actually not used
 	packet_info->hash_chunk = (uint8 *)calloc(HASH_LEN, sizeof(uint8));
-	memcpy(packet_info->hash_chunk, p, HASH_LEN); // only one hash
+	memcpy((packet_info->hash_chunk), p, HASH_LEN); // only one hash
 	break;
     case DATA:
-	packet_info->hash_count = 0; // actually no such field 
-	packet_info->hash_chunk = (uint8 *)calloc(chunk_size, sizeof(uint8));
-	memcpy(packet_info->hash_chunk, p, chunk_size); // only one hash
+	//packet_info->hash_count = 0; // actually no such field 
+	packet_info->data_chunk = (uint8 *)calloc(chunk_size, sizeof(uint8));
+	memcpy((packet_info->data_chunk), p, chunk_size); // only one hash
 	break;
     case ACK:
     case DENIED:
-	packet_info->hash_count = 0; // actually no such field 
-	packet_info->hash_chunk = 0; // actually no such field 
+	// no hash/data_chunk
 	break;
     default:
 	fprintf(stderr, "Error! packet2info, type does no match\n");
@@ -307,7 +314,7 @@ void info_printer(void *data) {
     printf("ack_num:%d ", p->ack_num);
     printf("hash_count:%d(not necessarily exist)\n", p->hash_count);
     
-    printf("hash_chunk:(not necessarily exist)\n");
+    printf("hash/data_chunk:(not necessarily exist)\n");
     switch (p->type) {
     case WHOHAS:
     case IHAVE:
@@ -318,9 +325,11 @@ void info_printer(void *data) {
 	dump_hex(p->hash_chunk);
 	break;
     case DATA:
+	dump_hex(p->data_chunk);
+	printf("and more ...\n");
     case ACK:
     case DENIED:
-	printf(" no hash chunk\n");
+	printf("no hash/data chunk\n");
 	break;
     default:
 	printf("Wrong type\n");
@@ -491,6 +500,7 @@ void init_packet_info(struct packet_info_t **p) {
     (*p) = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
 
     (*p)->hash_chunk = NULL;
+    (*p)->data_chunk = NULL;
     init_list(&((*p)->peer_list));
 }
 
@@ -631,7 +641,7 @@ struct list_t *make_GET_info(uint8* hash, bt_peer_t *peer) {
     
     init_packet_info(&info);
     init_list(&info_list);
-    packet_len = HEADER_LEN + BYTE_LEN;
+    packet_len = HEADER_LEN + HASH_LEN;
 
     info->magic = (uint16)MAGIC;
     info->version = (uint8)VERSION;
@@ -643,7 +653,6 @@ struct list_t *make_GET_info(uint8* hash, bt_peer_t *peer) {
     
     info->hash_count = 0;// actually, not used
 
-    //info->hash_chunk = hash;
     info->hash_chunk = (uint8 *)calloc(HASH_LEN, sizeof(uint8));
     memcpy(info->hash_chunk, hash, HASH_LEN);
     //dump_hex(info->hash_chunk);
@@ -717,6 +726,126 @@ void init_peer_slot(struct peer_slot_t **ps){
     (*ps)->slot = NULL;
 }
 
+/* make a series of DATA packet, enlist them individually
+ * data can only be of size CHUNK_SIZE
+ * Always retun NULL, since all packet has been enlisted to send inside function
+ */
+struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list) {
+
+    assert(data != NULL);
+    assert(peer_list != NULL);
+
+    struct list_t *info_list = NULL;
+    struct packet_info_t *info = NULL;
+    int list_size, i;
+    size_t data_begin, data_end, data_len;
+
+    init_list(&info_list);
+
+    // turn into list of packets
+    list_size = CHUNK_SIZE / MAX_DATA;
+    if (MAX_DATA * list_size < CHUNK_SIZE)
+	++list_size;
+    assert(MAX_DATA * list_size >= CHUNK_SIZE);
+
+    for (i = 0; i < list_size; i++){
+	info = NULL;
+	init_packet_info(&info);
+
+	// data region
+	data_begin = MAX_DATA * i;
+	data_end = MAX_DATA * (i+1);
+	if (data_end > CHUNK_SIZE) 
+	    data_end = CHUNK_SIZE;
+	data_len = data_end - data_begin;
+
+	// basic infomation
+	info->magic = (uint16)MAGIC;
+	info->version = (uint8)VERSION;
+	info->type = (uint8)DATA;
+	info->header_len = (uint16)HEADER_LEN;
+	info->packet_len = (uint16)(HEADER_LEN + data_len);
+	info->seq_num = (uint32)i;
+	info->ack_num = (uint32)0; // not used
+
+	info->data_chunk = (uint8 *)calloc(data_len, sizeof(uint8));
+	memcpy(info->data_chunk, data + data_begin, data_len);
+
+	// additional information: dest. peer_list
+	info->peer_list = peer_list;
+
+	// enlist for send
+	enlist(info_list, info);
+    }
+
+    return info_list;
+}
+
+/* Fetch data from file based on hash_id
+ * If file cannot open or id wrong, return NULL
+ */
+uint8 *fetch_data(char *chunk_file, int hash_id) {
+    assert(chunk_file != NULL);
+    assert(hash_id >= 0);
+
+    uint8 *buf = NULL;
+    int fd;
+    size_t offset;
+
+    buf = (uint8 *)calloc(CHUNK_SIZE, sizeof(uint8));
+
+    // read data_file 
+    if ((fd = open(chunk_file, O_RDONLY, 0)) == -1) {
+	DEBUG_PERROR("Error! fetch_data, open data_file");
+	return NULL;
+    }
+    
+    // go to right position and read
+    offset = hash_id * CHUNK_SIZE;
+    if (lseek(fd, offset, SEEK_SET) == -1) {
+	DEBUG_PERROR("Error! fetch_data, lseek");
+	return NULL;
+    }
+    
+    if (read(fd, buf, CHUNK_SIZE) == -1) {
+	DEBUG_PERROR("Error! fetch_data, read");
+	return NULL;
+    }
+
+    return buf;
+}
+
+/* Find id by comparing hashes
+ * Return a non-negative id if found, return -1 if an id is not found
+ */
+int hash2id(uint8 *hash, struct list_t *id_hash_list) {
+    assert(id_hash_list != NULL);
+
+    struct list_item_t *ite = NULL;
+    struct id_hash_t *id_hash = NULL;
+    uint8 hash_hex[HASH_LEN];
+
+    DPRINTF(DEBUG_PACKET, "hash2id: looking for id of hash:");
+    dump_hex(hash);
+    
+    ite = get_iterator(id_hash_list);
+    while (has_next(ite)) {
+	id_hash = next(&ite);
+	
+	str2hex(id_hash->hash_string, hash_hex);
+
+	DPRINTF(DEBUG_PACKET, "hash2id: compare to:");
+	dump_hex(hash_hex);
+	
+	if (memcmp(hash, hash_hex, HASH_LEN) == 0) {
+	    DPRINTF(DEBUG_PACKET, "hash2id: matching hash found, id is %d\n", id_hash->id);
+	    return id_hash->id;
+	}
+    }
+    DPRINTF(DEBUG_PACKET, "hash2id: matching hash not found\n");
+
+    return -1;
+}
 
 
 
@@ -742,6 +871,25 @@ int main(){
     packet = info2packet(WHOHAS_packet_info);
     packet_info = packet2info(packet);
     dump_packet_info(packet_info);
+
+    // test make_DATA_info
+    int sock;
+    bt_peer_t peer;
+    struct list_t *peer_list = NULL;
+
+    peer.id = 1;
+    memset(&peer.addr, sizeof(peer.addr));
+    peer.addr.sin_family = AF_INET;
+    peer.addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    peer.addr.sin_port = htons(7890);
+    
+    if (bind(sock, (struct sockaddr *) &(peer.addr), sizeof(peer.addr)) == -1) {
+	perror("could not bind socket");
+	exit(-1);
+    }
+
+    init_list(&peer_list);
+    make_DATA_info("B.haschunks", 2, peer_list);
 
     return 0;
 }

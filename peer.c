@@ -16,6 +16,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include "list.h"
 #include "debug.h"
 #include "spiffy.h"
@@ -79,6 +80,15 @@ struct list_t *exclude_self(bt_peer_t *all_nodes, short self_id) {
 }
 
 
+void id_hash_printer(void *data) {
+    assert(data != NULL);
+    struct id_hash_t *p = NULL;
+
+    p = (struct id_hash_t *)data;
+
+    printf("id_hash: %d, %s\n", p->id, p->hash_string);
+}
+
 // parse has_chunk_file, get a list of id and hash_string
 void parse_haschunkfile(bt_config_t *config) {
 
@@ -108,18 +118,20 @@ void parse_haschunkfile(bt_config_t *config) {
 	id_hash->id = id;
 	id_hash->hash_string = hash_string;
 
-	enlist_id_hash(&(config->id_hash_list), id_hash);
+	enlist(config->id_hash_list, id_hash);
 
 	memset(buf, 0, buf_size);
     }
     if (debug & DEBUG_PEER) {
 	printf("\nparse_hashchunkfile: config->id_hash_list:\n");
-	dump_id_hash_list(config->id_hash_list);
+	dump_list(config->id_hash_list, id_hash_printer, "\n");
 	printf("\n");
     }
     
 
 }
+
+
 
 
 
@@ -129,7 +141,7 @@ struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile, stru
     struct list_t  *WHOHAS_info_list = NULL;
 
     DPRINTF(DEBUG_PEER, "handle_GET_request:\n");
-    DPRINTF(DEBUG_PEER, "chunfile:%s, outputfile:%s\n\n", chunkfile, outputfile);
+    DPRINTF(DEBUG_PEER, "chunkfile:%s, outputfile:%s\n\n", chunkfile, outputfile);
 
     init_GET_request(&GET_request);
 
@@ -196,7 +208,7 @@ void peer_run(bt_config_t *config) {
     fd_set readfds, writefds;
     struct user_iobuf *userbuf = NULL;
     struct GET_request_t *GET_request = NULL;
-    struct packet_info_t *reply_info = NULL;
+    struct list_t *reply_list = NULL;
     struct packet_info_t *recv_info = NULL;
 
     //cp2:
@@ -263,11 +275,14 @@ void peer_run(bt_config_t *config) {
 		    //ctr_enlist(GET_request->outbound_info_list);
 		    outbound_list_cat(GET_request->outbound_info_list);
 
+
 		    FD_SET(sock, &master_writefds); 
 
 		} else {
 		    DPRINTF(DEBUG_PACKET, "peer: nothing to handle\n");
 		}
+
+		check_out_size();
 	    }
 
 	    // all five kinds of packets
@@ -278,21 +293,22 @@ void peer_run(bt_config_t *config) {
 
 		if ((recv_info = general_recv(sock, config)) != NULL) {
 		    
-		    reply_info = process_inbound_udp(recv_info, sock, config, GET_request);
+		    reply_list = process_inbound_udp(recv_info, sock, config, GET_request);
 		    // if reply_info == NULL, no need to reply
-		    if (reply_info != NULL) {
-			DPRINTF(DEBUG_PEER, "Peer: reply_info is not null, ");
-			DPRINTF(DEBUG_PEER, "do general_enlist\n");
-			if (general_enlist(reply_info) != 0)
-			    DEBUG_PERROR("Error! peer: general_enlist\n");
+		    if (reply_list != NULL && reply_list->length != 0) {
+			DPRINTF(DEBUG_PEER, "Peer: reply_list is not null or empty, ");
+			DPRINTF(DEBUG_PEER, "do general_list_cat\n");
+			if (general_list_cat(reply_list) != 0)
+			    DEBUG_PERROR("Error! peer: general_list_cat\n");
 		    } else {
-			DPRINTF(DEBUG_PEER, "Peer: reply_info is null, no general_enlist\n");
+			DPRINTF(DEBUG_PEER, "Peer: reply_list is null or empty, no general_list_cat\n");
 		    }
-		    // null reply_info might be the result of IHAVE packet, still need to write
+		    // null reply_info might be the result of IHAVE, DATA packet, still need to write
 		    FD_SET(sock, &master_writefds);
 
 		}
 
+		check_out_size();
 	    }
 
 	    // all five kinds of packet
@@ -309,7 +325,7 @@ void peer_run(bt_config_t *config) {
 		    FD_CLR(sock, &master_writefds);
 		}
 		
-
+		check_out_size();
 	    }
 	}
     }
