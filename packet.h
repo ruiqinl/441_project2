@@ -27,8 +27,13 @@
 #define HEADER_LEN 16
 #define BYTE_LEN 4
 #define HASH_STR_LEN 40
-#define CHUNK_SIZE (512*1024)
 #define MAX_DATA (MAX_PACKET_LEN - HEADER_LEN)
+
+#ifdef DEBUG
+#define CHUNK_SIZE (512*6)
+#else
+#define CHUNK_SIZE (512*1024)
+#endif
 
 #define INIT_ARRAY_SIZE 128
 

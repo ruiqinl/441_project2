@@ -1,7 +1,7 @@
 #ifndef _CTR_SEND_RECV_H_
 #define _CTR_SEND_RECV_H_
 
-#define INIT_WND_SIZE 2
+#define INIT_WND_SIZE 1
 
 #include "list.h"
 

@@ -325,7 +325,6 @@ void peer_run(bt_config_t *config) {
 		    FD_CLR(sock, &master_writefds);
 		}
 		
-		check_out_size();
 	    }
 	}
     }

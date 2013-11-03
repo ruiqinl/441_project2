@@ -89,11 +89,11 @@ uint8 *info2packet(struct packet_info_t *packet_info){
     memcpy(packet, &packet_len, 2);
     packet += 2;
 
-    uint32 seq_num = htons(packet_info->seq_num);
+    uint32 seq_num = htonl(packet_info->seq_num);
     memcpy(packet, &seq_num, 4);
     packet += 4;
 
-    uint32 ack_num = htons(packet_info->ack_num);
+    uint32 ack_num = htonl(packet_info->ack_num);
     memcpy(packet, &ack_num, 4);
     packet += 4;
 
@@ -327,6 +327,7 @@ void info_printer(void *data) {
     case DATA:
 	dump_hex(p->data_chunk);
 	printf("and more ...\n");
+	break;
     case ACK:
     case DENIED:
 	printf("no hash/data chunk\n");
@@ -770,6 +771,8 @@ struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list) {
 
 	info->data_chunk = (uint8 *)calloc(data_len, sizeof(uint8));
 	memcpy(info->data_chunk, data + data_begin, data_len);
+	DPRINTF(DEBUG_PACKET, "first 8 bytes of data_chunk:");
+	dump_hex(info->data_chunk);
 
 	// additional information: dest. peer_list
 	info->peer_list = peer_list;
@@ -789,14 +792,43 @@ uint8 *fetch_data(char *chunk_file, int hash_id) {
     assert(hash_id >= 0);
 
     uint8 *buf = NULL;
+    char path_buf[BT_FILENAME_LEN];
+    char *path_p = NULL;
+    char *tmp = NULL;
     int fd;
+    FILE* fp;
     size_t offset;
+    int size;
+    printf("fetch_data:chunk_file:%s, hash_id:%d\n", chunk_file, hash_id);
 
+    memset(path_buf, 0, BT_FILENAME_LEN);
     buf = (uint8 *)calloc(CHUNK_SIZE, sizeof(uint8));
 
+    // figure data_chunk file
+    if((fp = fopen(chunk_file, "r")) == NULL) {
+	DPRINTF(DEBUG_PACKET, "Error! fetch_data, open chunk_file:%s", chunk_file);
+	return NULL;
+    }
+
+    if (fgets(path_buf, BT_FILENAME_LEN-1, fp) == NULL) {
+	DEBUG_PERROR("Error! fetch_data, fgets\n");
+	return NULL;
+    }
+    
+    if ((path_p = strstr(path_buf, "./")) == NULL) {
+	DEBUG_PERROR("Error! fetch_data, strchr\n");
+	return NULL;
+    }
+    tmp = strchr(path_p, '\n');
+    *tmp = '\0';
+    path_p += 2;
+    
+    DPRINTF(DEBUG_PACKET, "fetch_data: data_file:%s\n", path_p);
+
     // read data_file 
-    if ((fd = open(chunk_file, O_RDONLY, 0)) == -1) {
-	DEBUG_PERROR("Error! fetch_data, open data_file");
+    if ((fd = open(path_p, O_RDONLY, 0)) == -1) {
+	DPRINTF(DEBUG_PACKET, "Error! fetch_data, open data_file %s\n", path_p);
+	DEBUG_PERROR("");
 	return NULL;
     }
     
@@ -807,10 +839,11 @@ uint8 *fetch_data(char *chunk_file, int hash_id) {
 	return NULL;
     }
     
-    if (read(fd, buf, CHUNK_SIZE) == -1) {
+    if ((size = read(fd, buf, CHUNK_SIZE)) == -1) {
 	DEBUG_PERROR("Error! fetch_data, read");
 	return NULL;
     }
+    DPRINTF(DEBUG_PACKET, "fetch_data: %d bytes of data is fetched, CHUNK_SIZE is %d\n", size, CHUNK_SIZE);
 
     return buf;
 }

@@ -148,11 +148,12 @@ int data_wnd_list_send(int sock) {
 
 	data_wnd = next(&iterator);
 	printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
-	if (data_wnd->length == 0) {
-	    printf("wnd_%d is empty, delist it\n", data_wnd->connection_peer_id);
+	//if (data_wnd->packet_list->length == 0) {
+	if (data_wnd->last_packet_avai == data_wnd->last_packet_sent) {
+	    printf("wnd_%d has no packet to send, delist it\n", data_wnd->connection_peer_id);
 	    delist_item(data_wnd_list, old_iterator);
 	} else {
-	    printf("wnd_%d is not empty, send it\n", data_wnd->connection_peer_id);
+	    printf("wnd_%d has more packet to send, send it\n", data_wnd->connection_peer_id);
 	    if (data_wnd_send(sock, data_wnd) == 1) {
 		// send a packet inside data_list out
 		return 1;
@@ -170,24 +171,28 @@ int data_wnd_list_send(int sock) {
  */
 int data_wnd_send(int sock, struct data_wnd_t *wnd) {
     // last_packet_acked/avai/sent
+
+    assert(wnd->last_packet_sent < wnd->last_packet_avai);
+
     struct packet_info_t *info = NULL;
     int id;
     
     id = wnd->connection_peer_id;
 
     printf("data_wnd_send: wnd_%d, before sending, sent:%d avai:%d\n", id, wnd->last_packet_sent, wnd->last_packet_avai);
-    //while (wnd->last_packet_sent < wnd->last_packet_avai) { // this line for test
-    if (wnd->last_packet_sent < wnd->last_packet_avai) {
 
-	info = list_ind(wnd->packet_list, wnd->last_packet_sent+1);
-	if (send_info(sock, info) == 1) {
+    info = list_ind(wnd->packet_list, wnd->last_packet_sent+1);
+    if (send_info(sock, info) == 1) {
+	
+	// slide window
+	(wnd->last_packet_sent)++;
+	if (wnd->last_packet_avai != wnd->packet_list->length - 1) 
+	    wnd->last_packet_avai += 1;
 
-	    (wnd->last_packet_sent)++;
-	    printf("data_wnd_send: wnd_%d, after sending, sent:%d avai:%d\n", id, wnd->last_packet_sent, wnd->last_packet_avai);// DPRINTF????
-	    return 1;
-	}
 
-    } 
+	printf("data_wnd_send: wnd_%d, after sending, sent:%d avai:%d\n", id, wnd->last_packet_sent, wnd->last_packet_avai);
+	return 1;
+    }
 
     DPRINTF(DEBUG_CTR, "data_wnd_send: send no packet\n");
     return 0;

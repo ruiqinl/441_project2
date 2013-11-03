@@ -7,6 +7,7 @@
 struct list_t *enlist(struct list_t *list, void *data) {
     struct list_item_t *t = NULL;
     assert(list != NULL);
+    assert(data != NULL);
 
     t = (struct list_item_t *)calloc(1, sizeof(struct list_item_t));
     if (t == NULL) {
@@ -16,6 +17,7 @@ struct list_t *enlist(struct list_t *list, void *data) {
     
     t->data = data;
     t->next = NULL;
+    t->prev = NULL;
     
     if (list->length == 0) {
 	assert(list->head == NULL);
@@ -30,7 +32,10 @@ struct list_t *enlist(struct list_t *list, void *data) {
 	assert(list->end != NULL);
 
 	list->end->next = t;
+	t->prev = list->end;
+
 	list->end = list->end->next;
+
 	(list->length)++;
 
 	assert(list->end != list->head);
@@ -38,6 +43,7 @@ struct list_t *enlist(struct list_t *list, void *data) {
     return list;
 }
 
+/* delis first item  */
 void *delist(struct list_t *list) {
     void *data = NULL;
 
@@ -58,6 +64,7 @@ void *delist(struct list_t *list) {
 	list->end = NULL;
     } else {
 	list->head = list->head->next;
+	list->head->prev = NULL;
     }
 
     return data;
@@ -66,57 +73,46 @@ void *delist(struct list_t *list) {
 int delist_item(struct list_t *list, struct list_item_t *item) {
     assert(list != NULL);
     assert(item != NULL);
-    assert(list->length != 0);
 
-    struct list_item *prev = NULL;
+    struct list_item_t *prev = NULL;
+    struct list_item_t *next = NULL;
 
-    if (item == list->head) {
-	// item is head
-	if (list->length == 1) {
-	    // empty this list
-	    list->head = NULL;
-	    list->end = NULL;
-	    list->length = NULL;
-	} else {
-	    // head to next
-	    list->head = list->head->next;
-	    item->next = NULL;
-	    list->length -= 1;
-	}
+    if (list->length == 1) {
+	assert(list->head == item);
+	list->head = NULL;
+	list->end = NULL;
+	list->length = 0;
 	return 0;
     }
 
-    if (item == list->end) {
-	if (list->length == 1) {
-	    // empty this list
-	    list->head = NULL;
-	    list->end = NULL;
-	    list->length = NULL;
-	} else {
-	    prev = list_ind_item(list, list->length-2);
-	    prev->next = NULL;
-	    list->end = prev;
-	    list->length -= 1;
-	}
+    prev = item->prev;
+    next = item->next;
+    
+    if (prev == NULL) {
+	// item is head, and next exists
+	assert(next != NULL);
+	list->head = next;
+	next->prev = NULL;
+	list->length -= 1;
 	return 0;
     }
 
-
-}
-
-struct list_item_t *list_ind_item(struct list_t *list, int ind) {
-    assert(list != 0);
-    assert(ind >= 0);
-    assert(ind < list->length);
-
-    struct list_item_t *p = list->head;
-    int count = 0;
-
-    while (count++ != ind) {
-	assert(p != NULL);
-	p = p->next;
+    if (next == NULL) {
+	// item is end, and prev exists
+	assert(prev != NULL);
+	list->end = prev;
+	prev->next = NULL;
+	list->length -= 1;
+	return 0;
     }
-    return p;
+    
+    assert(prev != NULL);
+    assert(next != NULL);
+    prev->next = next;
+    next->prev = prev;
+    list->length -= 1;
+    
+    return 0;
 }
 
 struct list_t *init_list(struct list_t **list) {
@@ -150,6 +146,7 @@ struct list_t *cat_list(struct list_t **p, struct list_t **q) {
     }
 
     (*p)->end->next = (*q)->head;
+    (*q)->head->prev = (*p)->end;
     (*p)->end = (*q)->end;
 
     (*p)->length += (*q)->length;
