@@ -6,6 +6,7 @@
 /* Return pointer to list, return NULL on error  */
 struct list_t *enlist(struct list_t *list, void *data) {
     struct list_item_t *t = NULL;
+    assert(list != NULL);
 
     t = (struct list_item_t *)calloc(1, sizeof(struct list_item_t));
     if (t == NULL) {
@@ -14,31 +15,50 @@ struct list_t *enlist(struct list_t *list, void *data) {
     }
     
     t->data = data;
+    t->next = NULL;
     
-    if (list->end == NULL) {
+    if (list->length == 0) {
+	assert(list->head == NULL);
+	assert(list->end == NULL);
+
 	list->end = t;
 	list->head = list->end;
 	list->length = 1;
+
     } else {
+	assert(list->head != NULL);
+	assert(list->end != NULL);
+
 	list->end->next = t;
-	list->end = t;
-	list->length++;
+	list->end = list->end->next;
+	(list->length)++;
+
+	assert(list->end != list->head);
     }
     return list;
 }
 
 void *delist(struct list_t *list) {
     void *data = NULL;
-    
+
+    assert(list != NULL);
     if (list->length == 0) {
-	DPRINTF(DEBUG_LIST, "Warning! delist a null list\n");
+	DPRINTF(DEBUG_LIST, "Warning! trying to delist an empty list\n");
 	return NULL;
     }
     
+    assert(list->head != NULL);
+    assert(list->end != NULL);
+
     data = list->head->data;
 
-    list->head = list->head->next;
     list->length -= 1;
+    if (list->length == 0) {
+	list->head = NULL;
+	list->end = NULL;
+    } else {
+	list->head = list->head->next;
+    }
 
     return data;
 }
@@ -148,6 +168,17 @@ void *list_ind(struct list_t *list, int ind) {
     return NULL;
 }
 
+void free_list(struct list_t *list) {
+    struct list_item_t *ite = NULL;
+    struct list_item_t *p = NULL;
+    
+    ite = get_iterator(list);
+    while (has_next(ite)) {
+	p = ite;
+	ite = ite->next;
+	free(p);
+    }
+}
 
 #ifdef _TEST_LIST_
 
@@ -189,11 +220,14 @@ int main(){
     dump_list(list, int_printer, " ");
     delist(list);
     dump_list(list, int_printer, " ");
-    delist(list);
-    dump_list(list, int_printer, " ");
+    //delist(list);
+    //dump_list(list, int_printer, " ");
 
-    printf("list->length:%d\n", list->length);
-    delist(list);
+    //printf("list->length:%d\n", list->length);
+    //delist(list);
+
+    free_list(list);
+    printf("list_freed\n");
     
     return 0;
 }

@@ -78,6 +78,7 @@ struct list_t *exclude_self(bt_peer_t *all_nodes, short self_id) {
     return peer_list;
 }
 
+
 // parse has_chunk_file, get a list of id and hash_string
 void parse_haschunkfile(bt_config_t *config) {
 
@@ -201,6 +202,7 @@ void peer_run(bt_config_t *config) {
     //cp2:
     //struct peer_to_slot_t *peer_to_slot = NULL;
     struct list_t *peer_list = NULL;
+    struct list_t *GET_list = NULL;
     
     if ((sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP)) == -1) {
 	perror("peer_run could not create socket");
@@ -279,9 +281,16 @@ void peer_run(bt_config_t *config) {
 		    reply_info = process_inbound_udp(recv_info, sock, config, GET_request);
 		    // if reply_info == NULL, no need to reply
 		    if (reply_info != NULL) {
-			general_enlist(reply_info);
-			FD_SET(sock, &master_writefds);
+			DPRINTF(DEBUG_PEER, "Peer: reply_info is not null, ");
+			DPRINTF(DEBUG_PEER, "do general_enlist\n");
+			if (general_enlist(reply_info) != 0)
+			    DEBUG_PERROR("Error! peer: general_enlist\n");
+		    } else {
+			DPRINTF(DEBUG_PEER, "Peer: reply_info is null, no general_enlist\n");
 		    }
+		    // null reply_info might be the result of IHAVE packet, still need to write
+		    FD_SET(sock, &master_writefds);
+
 		}
 
 	    }
@@ -290,6 +299,10 @@ void peer_run(bt_config_t *config) {
 	    if (FD_ISSET(sock, &writefds)) {
 
 		DPRINTF(DEBUG_PEER, "sock, write\n");
+
+		// check if GET_request has available peers to download chunks
+		GET_list = check_GET_req(GET_request, peer_list);
+		outbound_list_cat(GET_list);
 		
 		if (general_send(sock) == 0) {
 		    DPRINTF(DEBUG_PEER, "no more packet to send, fd_clr sock from writefds\n");

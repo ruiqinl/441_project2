@@ -29,5 +29,6 @@ struct list_item_t *get_iterator(struct list_t *list);
 int has_next(struct list_item_t *iterator);
 void *next(struct list_item_t **iterator);
 void *list_ind(struct list_t *list, int ind);
+void free_list(struct list_t *list);
 
 #endif

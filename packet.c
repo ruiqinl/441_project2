@@ -4,6 +4,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <assert.h>
 #include "bt_parse.h"
 #include "list.h"
 #include "packet.h"
@@ -63,6 +64,7 @@ struct list_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request, struc
 uint8 *info2packet(struct packet_info_t *packet_info){
     
     uint8 *packet, *packet_head;
+    int chunksize = 0;
 
     packet_head = (uint8 *)calloc(packet_info->packet_len, sizeof(uint8));
     packet = packet_head;
@@ -93,13 +95,31 @@ uint8 *info2packet(struct packet_info_t *packet_info){
     memcpy(packet, &ack_num, 4);
     packet += 4;
 
-    memcpy(packet, &(packet_info->hash_count), 1);
-    packet += 1;
-    memset(packet, 0, 3);
-    packet += 3;
+    switch (packet_info->type) {
+    case WHOHAS:
+    case IHAVE:
+	memcpy(packet, &(packet_info->hash_count), 1);
+	packet += 1;
+	memset(packet, 0, 3);
+	packet += 3;	
+	
+	chunksize = packet_info->hash_count * HASH_LEN;
+	break;
 
-    int chunk_size = packet_info->hash_count * HASH_LEN;
-    memcpy(packet, packet_info->hash_chunk, chunk_size);
+    case GET:
+    case DATA:
+    case ACK:
+    case DENIED:
+	chunksize = packet_info->packet_len - packet_info->header_len;
+	break;
+
+    default:
+	DPRINTF(DEBUG_PACKET, "info2packet: Warning! wrong packet type\n");
+	chunksize = 0;
+	break;
+    }
+
+    memcpy(packet, packet_info->hash_chunk, chunksize);
     
     return packet_head;
 }
@@ -274,6 +294,8 @@ void info_printer(void *data) {
     int j;
     struct packet_info_t *p = NULL;
 
+    assert(data != NULL);
+
     p = (struct packet_info_t *)data;
     
     printf("magic:%d ", p->magic);
@@ -286,9 +308,25 @@ void info_printer(void *data) {
     printf("hash_count:%d(not necessarily exist)\n", p->hash_count);
     
     printf("hash_chunk:(not necessarily exist)\n");
-    for (j = 0; j < p->hash_count; j++) 
-	dump_hex(p->hash_chunk + HASH_LEN * j);
-
+    switch (p->type) {
+    case WHOHAS:
+    case IHAVE:
+	for (j = 0; j < p->hash_count; j++) 
+	    dump_hex(p->hash_chunk + HASH_LEN * j);
+	break;
+    case GET:
+	dump_hex(p->hash_chunk);
+	break;
+    case DATA:
+    case ACK:
+    case DENIED:
+	printf(" no hash chunk\n");
+	break;
+    default:
+	printf("Wrong type\n");
+	break;
+    }
+    
     // print peer list
     printf("peer_list:\n");
     dump_list(p->peer_list, peer_printer, "\n");
@@ -462,8 +500,224 @@ void init_slot(struct slot_t **p) {
 
     init_list(&((*p)->peer_list));
     (*p)->selected_peer = NULL;
-    init_packet_info(&((*p)->info));
+    init_list(&((*p)->DATA_list));
+    
+    (*p)->status = RAW;
 }
+
+struct list_t *check_GET_req(struct GET_request_t *GET_request, struct list_t *peer_list) {
+    
+    struct list_item_t *iterator = NULL;
+    struct slot_t *slot = NULL;
+    struct list_t *list = NULL;
+    struct list_t *ret_list = NULL;
+    int done_count = 0;
+    int ind = 0;
+    
+
+    if (GET_request == NULL){
+	DPRINTF(DEBUG_PACKET, "check_GET_req: GET req is null, no need to check\n");
+	return NULL;
+    }
+
+    init_list(&list);
+
+    iterator = get_iterator(GET_request->slot_list);
+    while (has_next(iterator)) {
+	slot = next(&iterator);
+	DPRINTF(DEBUG_PACKET, "check_GET_req: slot_%d, ", ind);
+	
+	switch (slot->status) {
+	case RAW:
+	    DPRINTF(DEBUG_PACKET, "RAW\n");
+	    break; // have not received IHAVE yet, what to do ??????????
+
+	case START:
+	    DPRINTF(DEBUG_PACKET, "START\n");
+	    // received IHAVE packet(s)
+	    assert(slot->peer_list->length != 0);
+	    assert(slot->selected_peer == NULL);
+	    assert(slot->DATA_list->length == 0);
+
+	    
+	    if (select_peer(slot, GET_request->peer_slot_list) != NULL) {
+		slot->status = DOWNLOADING; // change status	
+
+		assert(slot->selected_peer != NULL);
+		ret_list = make_GET_info(slot->hash_hex, slot->selected_peer);
+		cat_list(&list, &ret_list);
+		
+		break;
+	    }
+	    // no available peer, restart????
+	    // right now, do nothing, hope some peer become available next time this slot is checked
+	    break;
+
+	case DOWNLOADING:
+	    DPRINTF(DEBUG_PACKET, "DOWNLOADING\n");
+	    // do nothing;
+	    break;
+
+	case DONE:
+	    DPRINTF(DEBUG_PACKET, "DONE\n");
+	    ++done_count;
+	    break;
+
+	case RESTART:
+	    DPRINTF(DEBUG_PACKET, "RESTART\n");
+
+	    slot->status = RAW;// send WHOHAS, wait for IHAVE to change status to START
+
+	    slot->selected_peer = NULL;
+	    // don't free
+	    slot->peer_list = NULL;
+	    init_list(&(slot->peer_list));
+	    // free
+	    free_list(slot->DATA_list);
+	    slot->DATA_list = NULL;
+	    init_list(&(slot->DATA_list));
+	    
+	    ret_list = make_single_WHOHAS_info(slot->hash_hex, peer_list);
+	    cat_list(&list, &ret_list);
+	    break;
+
+	}
+	++ind;
+    }
+
+
+    DPRINTF(DEBUG_PACKET, "check_GET_req: GET req check done\n");
+    return list;
+}
+
+struct list_t *make_single_WHOHAS_info(uint8 *hash, struct list_t *peer_list) {
+    struct packet_info_t *info = NULL;
+    struct list_t *info_list = NULL;
+    int packet_len;
+
+    assert(hash != NULL);
+    assert(peer_list != NULL);
+    assert(peer_list->length == 1);
+
+    init_packet_info(&info);
+    init_list(&info_list);
+    packet_len = HEADER_LEN + BYTE_LEN + BYTE_LEN;
+
+    info->magic = (uint16)MAGIC;
+    info->version = (uint8)VERSION;
+    info->type = (uint8)WHOHAS;
+    info->header_len = (uint16)HEADER_LEN;
+    info->packet_len = (uint16)packet_len;
+    info->seq_num = (uint32)0;
+    info->ack_num = (uint32)0;
+    
+    info->hash_count = 1;
+    info->hash_chunk = hash;
+    //memcpy(info->hash_chunk, hash, HASH_LEN);
+
+    info->peer_list = peer_list;
+    //cat_list(&(info->peer_list), &peer_list);
+    
+    enlist(info_list, info);
+
+    return info_list;
+
+}
+
+struct list_t *make_GET_info(uint8* hash, bt_peer_t *peer) {
+    struct packet_info_t *info = NULL;
+    struct list_t *info_list = NULL;
+    int packet_len;
+    
+    init_packet_info(&info);
+    init_list(&info_list);
+    packet_len = HEADER_LEN + BYTE_LEN;
+
+    info->magic = (uint16)MAGIC;
+    info->version = (uint8)VERSION;
+    info->type = (uint8)GET;
+    info->header_len = (uint16)HEADER_LEN;
+    info->packet_len = (uint16)packet_len;
+    info->seq_num = (uint32)0;
+    info->ack_num = (uint32)0;
+    
+    info->hash_count = 0;// actually, not used
+
+    //info->hash_chunk = hash;
+    info->hash_chunk = (uint8 *)calloc(HASH_LEN, sizeof(uint8));
+    memcpy(info->hash_chunk, hash, HASH_LEN);
+    //dump_hex(info->hash_chunk);
+
+    enlist(info->peer_list, peer);
+    
+    enlist(info_list, info);
+
+    return info_list;
+}
+
+bt_peer_t *select_peer(struct slot_t *slot, struct list_t *peer_slot_list) {
+    
+    struct list_item_t *iterator = NULL;
+    bt_peer_t *peer = NULL;
+    struct peer_slot_t *peer_slot = NULL;
+    
+    assert(peer_slot_list != NULL); // it could be empty
+    assert(slot->peer_list->length != 0); // it cannot be empty
+
+    DPRINTF(DEBUG_PACKET, "select_peer:\n");
+    iterator = get_iterator(slot->peer_list);
+    while (has_next(iterator)) {
+	peer = next(&iterator);
+
+	if (in_peer_slot_list(peer->id, peer_slot_list)) {
+	    DPRINTF(DEBUG_PACKET, "select_peer:peer_%d already in peer_slot_list\n", peer->id);
+	    continue; // check next peer
+	} else {
+	    DPRINTF(DEBUG_PACKET, "select_peer:peer_%d not in peer_slot_list, selected\n", peer->id);
+	    
+	    // select
+	    slot->selected_peer = peer;
+
+	    // enlist peer_slot
+	    init_peer_slot(&peer_slot);
+	    peer_slot->peer_id = peer->id;
+	    peer_slot->slot = slot;
+	    enlist(peer_slot_list, peer_slot);
+
+	    return peer; 
+	}
+    }
+    
+    // all peers are in peer_slot_list
+    DPRINTF(DEBUG_PACKET, "select_peer: all slot->peers are in peer_slot_list, no peer selected\n");
+    return NULL;
+}
+
+/* check if a peer_id is in the peer_slot_list  
+ * return 1 if in, 0 if not
+ */
+int in_peer_slot_list(int peer_id, struct list_t *peer_slot_list) {
+    
+    struct list_item_t *iterator = NULL;
+    struct peer_slot_t *ps = NULL;
+
+    iterator = get_iterator(peer_slot_list);
+    while (has_next(iterator)) {
+	ps = next(&iterator);
+	if (peer_id == ps->peer_id)
+	    return 1;
+    }
+    return 0;
+}
+
+void init_peer_slot(struct peer_slot_t **ps){
+    *ps = (struct peer_slot_t *)calloc(1, sizeof(struct peer_slot_t));
+
+    (*ps)->peer_id = -1;
+    (*ps)->slot = NULL;
+}
+
+
 
 
 #ifdef _TEST_PACKET_

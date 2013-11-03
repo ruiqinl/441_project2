@@ -18,6 +18,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <assert.h>
 #include "list.h"
 #include "bt_parse.h"
 #include "debug.h"
@@ -178,6 +179,8 @@ void bt_dump_config(bt_config_t *config) {
 void peer_printer(void *data) {
     bt_peer_t *peer = NULL;
     char buf[INET_ADDRSTRLEN];
+
+    assert(data != NULL);
 
     peer = (bt_peer_t *)data;
     inet_ntop(AF_INET, &(peer->addr.sin_addr), buf, INET_ADDRSTRLEN);

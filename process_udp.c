@@ -20,7 +20,6 @@ int process_outbound_udp(int sock, struct list_t *list) {
     struct packet_info_t *packet_info = NULL;
     
     assert(list != NULL);
-
     if ((packet_info = delist(list)) != NULL) {
 	if(debug & DEBUG_PROCESS_UDP) {
 	    printf("\nprocess_outbound_udp: process packet_info:\n");
@@ -39,7 +38,7 @@ int process_outbound_udp(int sock, struct list_t *list) {
 	    DPRINTF(DEBUG_PROCESS_UDP, "switch case ACK\n");
 	    break;
 	case GET:
-	    DPRINTF(DEBUG_PROCESS_UDP, "switch case ACK\n");
+	    DPRINTF(DEBUG_PROCESS_UDP, "switch case GET\n");
 	    break;
 	case DATA:
 	    DPRINTF(DEBUG_PROCESS_UDP, "switch case DATA\n");
@@ -52,6 +51,7 @@ int process_outbound_udp(int sock, struct list_t *list) {
 	return send_info(sock, packet_info);
     }
 
+    DPRINTF(DEBUG_PROCESS_UDP, "process_outbound_udp: empty outbound_list\n");
     return 0;
 }
 
@@ -249,8 +249,16 @@ void compare_hash(struct list_t *slot_list, struct packet_info_t *info) {
 	    DPRINTF(DEBUG_PROCESS_UDP, "compare_hash: info_hash_%d:", i);
 	    dump_hex(info_hash);
 	    if (memcmp(slot_hash, info_hash, HASH_LEN) == 0) {
+
 		cat_list(&(slot->peer_list), &(info->peer_list));
 		DPRINTF(DEBUG_PROCESS_UDP, "compare_hash: matching hash found, enlist peer to slot_%d\n", count);
+		
+		// change slot status only if it's RAW
+		if (slot->status == RAW) {
+		    slot->status = START;
+		    DPRINTF(DEBUG_PROCESS_UDP, "compare_hash: change slot status from RAW to START\n");
+		}
+
 		break;
 	    }
 	}

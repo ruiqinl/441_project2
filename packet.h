@@ -30,6 +30,11 @@
 
 #define INIT_ARRAY_SIZE 128
 
+#define RAW 0x00
+#define START 0x01
+#define DOWNLOADING 0x02
+#define DONE 0x04
+#define RESTART 0x08
 
 struct addr_t {
     struct sockaddr_in *sock_addr;
@@ -64,16 +69,19 @@ struct slot_t {
     int hash_id;
     char hash_str[HASH_STR_LEN+1];
     uint8 hash_hex[HASH_LEN];
+
+    unsigned char status;
     
     struct list_t *peer_list; // var length of peers, which graually grows by analyzing IHAVE_packet received, and the analysis is done in GET_req_t
-    struct peer_t *selected_peer; // select peer, slot to peer
+    bt_peer_t *selected_peer; // select peer, slot to peer
     
-    struct packet_info_t *info;
+    struct list_t *DATA_list;
+    
 };
 
 struct peer_slot_t {
     int peer_id;
-    int slot_ind;
+    struct slot_t *slot;
 };
 
 /*
@@ -130,5 +138,14 @@ struct slot_t *get_slot(struct list_t *peer_to_slot, bt_peer_t *peer);
 void init_slot(struct slot_t **p);
 void init_packet_info(struct packet_info_t **p);
 void init_slot(struct slot_t **p);
+
+struct list_t *check_GET_req(struct GET_request_t *GET_request, struct list_t *peer_list);
+
+struct list_t *make_GET_info(uint8* hash, bt_peer_t *peer);
+bt_peer_t *select_peer(struct slot_t *slot, struct list_t *peer_slot_list);
+int in_peer_slot_list(int peer_id, struct list_t *peer_slot_list);
+struct list_t *make_single_WHOHAS_info(uint8 *hash, struct list_t *peer_list);
+void init_peer_slot(struct peer_slot_t **ps);
+
 
 #endif

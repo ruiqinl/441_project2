@@ -34,7 +34,7 @@ struct flow_wnd_t {
 void init_ctr();
 void init_data_wnd(struct data_wnd_t **wnd);
 void init_flow_wnd(struct flow_wnd_t **wnd);
-int enlist_data_wnd (struct data_wnd_t *wnd, struct packet_info_t *info);
+
 
 int general_send(int sock);
 struct packet_info_t *general_recv(int sock, bt_config_t *config);
@@ -49,5 +49,6 @@ int outbound_list_en(void *data);
 
 int general_enlist(struct packet_info_t *info);
 int data_wnd_list_en(struct packet_info_t *info);
+int enlist_data_wnd (struct data_wnd_t *wnd, struct packet_info_t *info);
 
 #endif

@@ -92,7 +92,7 @@ int general_send(int sock) {
     }
 
     printf("general_send: try data_wnd_list_send:\n");
-    if ((count == data_wnd_list_send(sock)) != 0) {
+    if ((count = data_wnd_list_send(sock)) != 0) {
 	assert(count == 1);
 	printf("general_send: data_wnd_list_send sends a packet\n");
 	return 0;
@@ -103,6 +103,8 @@ int general_send(int sock) {
 
 /* Return -1 on type error, 0 on sending no packets, 1 on sending a packet */
 int outbound_list_send(int sock) {
+    assert(outbound_list != NULL);
+
     return process_outbound_udp(sock, outbound_list);    
 }
 
@@ -162,13 +164,20 @@ int data_wnd_send(int sock, struct data_wnd_t *wnd) {
 /* Return 0 on success, -1 on error  */
 int outbound_list_cat(struct list_t *out_list) {
 
+    if (out_list == NULL)
+	return 0;
+
     if (cat_list(&outbound_list, &out_list) != NULL)
 	return 0;
+
     return -1;
 }
 
 /* Return 0 on success, -1 on error  */
 int outbound_list_en(void *data) {
+    assert(data != NULL);
+    assert(outbound_list != NULL);
+
     if (enlist(outbound_list, data) != NULL)
 	return 0;
     return -1;
@@ -183,10 +192,12 @@ int general_enlist(struct packet_info_t *info) {
     case GET:
     case ACK:
     case DENIED:
-	outbound_list_en(info);
+	DPRINTF(DEBUG_CTR, "general_enlist: outbound_list_en\n");
+	return outbound_list_en(info);
 	break;
     case DATA:
-	data_wnd_list_en(info);
+	DPRINTF(DEBUG_CTR, "general_enlist: data_wnd_list_en\n");
+	return data_wnd_list_en(info);
 	break;
     default:
 	DPRINTF(DEBUG_CTR, "general_enlist: wrong type\n");
