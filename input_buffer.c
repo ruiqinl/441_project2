@@ -32,6 +32,9 @@ struct user_iobuf *create_userbuf() {
 
 void process_user_input(int fd, struct user_iobuf *userbuf)
 {
+
+    assert(userbuf != NULL);
+
     int nread;
     char *ret;
 
@@ -88,7 +91,9 @@ void enqueue_line(struct line_queue_t *line_queue, char *buf) {
 }
 
 struct line_t *dequeue_line(struct line_queue_t *line_queue) {
-    struct line_t *p;
+    assert(line_queue != NULL);
+
+    struct line_t *p = NULL;
 
     if (line_queue->head == NULL)
 	p = NULL;

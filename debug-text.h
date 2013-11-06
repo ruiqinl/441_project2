@@ -8,3 +8,6 @@
 { DEBUG_PACKET, "Debug packet"},
 { DEBUG_PROCESS_UDP, "Debug process_udp"},
 { DEBUG_PEER, "Debug process_udp"},
+{ DEBUG_LIST, "Debug list"},
+{ DEBUG_PARSE, "Debug bt_parse"},
+{ DEBUG_CTR, "Debug bt_parse"},

@@ -6,17 +6,21 @@
 #include <netinet/in.h>
 #include <string.h>
 #include <assert.h>
+#include <tgmath.h>
 #include "process_udp.h"
 #include "list.h"
 #include "ctr_send_recv.h"
 #include "debug.h"
 #include "spiffy.h"
+#include "sha.h"
+#include "chunk.h"
+
 
 /* one outbound_list for out non-data packet, a list of data_wnd for out data packet
  * one inbound_list for in packet, a list of flow_wnd for in data packet
  */
-static struct list_t *inbound_list = NULL;
-static struct list_t *outbound_list = NULL;
+static struct list_t *inbound_list = NULL; // all five kinds
+static struct list_t *outbound_list = NULL; // non-data packets
 
 static struct list_t *data_wnd_list = NULL;
 static struct list_t *flow_wnd_list = NULL;
@@ -28,6 +32,7 @@ void init_ctr() {
     init_list(&flow_wnd_list);
 }
 
+// last_pack_xx starts from 0
 void init_data_wnd(struct data_wnd_t **wnd) {
     
     *wnd = (struct data_wnd_t *)calloc(1, sizeof(struct data_wnd_t));
@@ -35,30 +40,41 @@ void init_data_wnd(struct data_wnd_t **wnd) {
     (*wnd)->connection_peer_id = -1;
 
     init_list(&(*wnd)->packet_list);
-    (*wnd)->last_packet_acked = -1;
-    (*wnd)->last_packet_sent = -1;
-    (*wnd)->last_packet_avai = -1;
+    (*wnd)->last_packet_acked = 0;
+    (*wnd)->last_packet_sent = 0;
+    (*wnd)->last_packet_avai = 0;
 
     (*wnd)->capacity = INIT_WND_SIZE; // when do congestion control, window size changes
     
 }
 
+// packet_xx starts from 0
 void init_flow_wnd(struct flow_wnd_t **wnd) {
 
     *wnd = (struct flow_wnd_t *)calloc(1, sizeof(struct flow_wnd_t));
 
-    (*wnd)->connection_peer_id = -1;    
-
     init_list(&(*wnd)->packet_list);
-    (*wnd)->last_packet_read = -1;
-    (*wnd)->next_packet_expec = -1;
-    (*wnd)->last_packet_recv = -1;
+    (*wnd)->last_packet_read = 0; 
+    (*wnd)->next_packet_expec = 1; // in initial state, next epxec is 0th packet
+    (*wnd)->last_packet_recv = 0;
 
     (*wnd)->capacity = INIT_WND_SIZE;
+
+    // push capacity # of empty info
+    struct packet_info_t *info = NULL;
+    int ind = 0;
     
+    while (ind < (*wnd)->capacity) {
+	ind++;
+	info = NULL;
+	init_packet_info(&info);
+	enlist((*wnd)->packet_list, info);
+    }
+    (*wnd)->last_packet_recv = ind;
+
 }
 
-void check_out_size() {
+int check_out_size() {
     long size = 0;
     struct list_item_t *ite = NULL;
     struct data_wnd_t *wnd = NULL;
@@ -70,7 +86,8 @@ void check_out_size() {
     }
 
     size += outbound_list->length;
-    
+
+    return size;
 }
 
 int enlist_data_wnd(struct data_wnd_t *wnd, struct packet_info_t *info) {
@@ -86,7 +103,7 @@ int enlist_data_wnd(struct data_wnd_t *wnd, struct packet_info_t *info) {
     assert(id == wnd->connection_peer_id);
 
     enlist(wnd->packet_list, info);
-    
+
     if (wnd->last_packet_avai < wnd->capacity) {
 	(wnd->last_packet_avai)++;
 	DPRINTF(DEBUG_CTR, "enlist_data_wnd: wnd_%d, avai increase to: %d\n", wnd->connection_peer_id, wnd->last_packet_avai);
@@ -115,14 +132,9 @@ int general_send(int sock) {
 	}
     }
 
-    return more_out();
+    return check_out_size();
 }
 
-int more_out() {
-    if (outbound_list->length == 0 && data_wnd_list->length == 0)
-	return 0;
-    return 1;
-}
 
 /* Return -1 on type error, 0 on sending no packets, 1 on sending a packet */
 int outbound_list_send(int sock) {
@@ -153,7 +165,7 @@ int data_wnd_list_send(int sock) {
 	    printf("wnd_%d has no packet to send, delist it\n", data_wnd->connection_peer_id);
 	    delist_item(data_wnd_list, old_iterator);
 	} else {
-	    printf("wnd_%d has more packet to send, send it\n", data_wnd->connection_peer_id);
+	    printf("wnd_%d has packet to send, send it\n", data_wnd->connection_peer_id);
 	    if (data_wnd_send(sock, data_wnd) == 1) {
 		// send a packet inside data_list out
 		return 1;
@@ -181,12 +193,12 @@ int data_wnd_send(int sock, struct data_wnd_t *wnd) {
 
     printf("data_wnd_send: wnd_%d, before sending, sent:%d avai:%d\n", id, wnd->last_packet_sent, wnd->last_packet_avai);
 
-    info = list_ind(wnd->packet_list, wnd->last_packet_sent+1);
+    info = list_ind(wnd->packet_list, wnd->last_packet_sent); // no plus 1
     if (send_info(sock, info) == 1) {
 	
 	// slide window
 	(wnd->last_packet_sent)++;
-	if (wnd->last_packet_avai != wnd->packet_list->length - 1) 
+	if (wnd->last_packet_avai < wnd->packet_list->length) 
 	    wnd->last_packet_avai += 1;
 
 
@@ -222,6 +234,76 @@ int outbound_list_en(void *data) {
     }
     return -1;
 }
+
+int is_fully_received() {
+    
+    struct flow_wnd_t *wnd = NULL;
+    struct packet_info_t *info = NULL;
+    int list_size;
+    int ind; 
+    uint8 buf[CHUNK_SIZE];
+    uint8 *p = NULL;
+    int data_size;
+    struct list_item_t *ite = NULL;
+
+    //printf("???????????????\n");
+    
+    if (flow_wnd_list->end == NULL) {
+	DPRINTF(DEBUG_CTR, "is_fully_received: no flow_wnd, no need to check\n");
+	return 0;
+    }
+
+    wnd = (struct flow_wnd_t *)flow_wnd_list->end->data;
+    assert(wnd != NULL);
+
+    // check size
+    list_size = get_list_size();
+
+    DPRINTF(DEBUG_CTR, "is_fully_received: last_pack_read:%d, list_size:%d\n", wnd->last_packet_read, list_size);
+    if (wnd->last_packet_read != list_size) {
+	DPRINTF(DEBUG_CTR, "is_fully_received: last_packet_read != list_size, no need to check\n");
+	return 0;
+    }
+    DPRINTF(DEBUG_CTR, "is_fully_received: last_packet_read== list_size, check\n");
+
+    assert(wnd->last_packet_read == list_size);
+    
+    // check hash
+    
+    // gather data
+    memset(buf, 0, CHUNK_SIZE);
+    p = buf;
+    ite = get_iterator(wnd->packet_list);
+    int length = 0;
+    for (ind = 0; ind < list_size; ind++) {
+	assert(ite != NULL);
+
+	info = next(&ite);
+
+	assert(info != NULL);
+	assert(info->type == DATA);
+	assert(info->data_chunk != NULL);
+
+	data_size = info->packet_len - info->header_len;
+	memcpy(p, info->data_chunk, data_size);
+	p += data_size;
+	length += data_size;
+
+    }
+    assert(length == CHUNK_SIZE);
+
+    // compute hash
+    uint8_t *hash = malloc((SHA1_HASH_SIZE)*sizeof(uint8_t));
+    shahash(buf, CHUNK_SIZE, hash);
+
+    char ascii[SHA1_HASH_SIZE*2+1]; // the ascii string.
+    hex2ascii(hash, SHA1_HASH_SIZE, ascii);
+    printf("hash:%s\n",ascii);
+
+    return 0;
+}
+
+
 
 int general_list_cat(struct list_t *info_list) {
 
@@ -350,6 +432,103 @@ struct packet_info_t *general_recv(int sock, bt_config_t *config) {
     }
 
     return info;
+}
+
+
+/* Locate the last flow_wnd in the flow_wnd_list, enlist the info, and adjust next_expec and last_recv of the flow_wnd 
+ * Always return the next_expec number 
+ */
+int enlist_DATA_info(struct packet_info_t *info) {
+    assert(info != NULL);
+    assert(flow_wnd_list != NULL);
+    assert(info->type == DATA);
+
+    struct flow_wnd_t *flow_wnd = NULL;
+    struct list_item_t *ite = NULL;
+    int ind = 0;
+
+    // if empty flow_wnd_list, init one flow_wnd
+    if (flow_wnd_list->length == 0) {
+	DPRINTF(DEBUG_CTR, "enlist_data_info: create a new data_wnd\n");
+	init_flow_wnd(&flow_wnd);	
+	enlist(flow_wnd_list, flow_wnd);
+    }
+    
+    // go to last flow_wnd, since this is the list we are dealing with
+    flow_wnd = (struct flow_wnd_t *)flow_wnd_list->end->data;
+    
+    // check if seq_num > last_packet_d
+
+    if (info->seq_num > flow_wnd->last_packet_recv) {
+	// if greater, abandon it, 
+	DPRINTF(DEBUG_CTR, "enlist_DATA_info: DATA_info->seq_num:%d > last_packet_recv:%d, drop it\n", info->seq_num, flow_wnd->last_packet_recv);
+
+    } else {
+
+	// if smaller, accept it
+	// go to position seq_num and save it
+	DPRINTF(DEBUG_CTR, "enlist_DATA_info: DATA_info->seq_num:%d <= last_packet_recv:%d, save it to flow_wnd_%d:position_%d\n", info->seq_num, flow_wnd->last_packet_recv, flow_wnd_list->length-1, info->seq_num-1);
+    
+	ite = get_iterator(flow_wnd->packet_list);
+	while (ind < (info->seq_num-1)) {
+	    assert(ite != NULL);
+	    ind++;
+	    ite = ite->next;
+	}
+	assert(ite != NULL);
+	ite->data = info;
+
+	// update 
+	DPRINTF(DEBUG_CTR, "enlist_DATA_info: before updating, last_packet_recv:%d, next_expec%d\n", flow_wnd->last_packet_recv, flow_wnd->next_packet_expec);
+
+	update_flow_wnd(flow_wnd);
+
+	DPRINTF(DEBUG_CTR, "enlist_DATA_info: after updating, last_packet_recv:%d, next_expec%d\n", flow_wnd->last_packet_recv, flow_wnd->next_packet_expec);
+    
+    }
+
+    return flow_wnd->next_packet_expec;
+}
+
+
+/* next_expec, last_recvd needs to be updated, we do not care about last_read */
+void update_flow_wnd(struct flow_wnd_t *wnd) {
+    struct list_item_t *ite = NULL;
+    int new_expec = 1;
+    int new_recv = 0;
+    struct packet_info_t *info = NULL;
+    int more = 0;
+    int count;
+    
+    // update expec, it's just the packet right before the first hole
+    ite = get_iterator(wnd->packet_list);
+    while (has_next(ite)) {
+	info = next(&ite);
+	if (info->data_chunk != NULL)
+	    ++new_expec;
+	else
+	    break;
+    }
+    wnd->next_packet_expec = new_expec;    // new_expec might still be 1
+    
+    // update last_pck_recv
+    new_recv = new_expec + INIT_WND_SIZE - 1;
+    more = new_recv - wnd->last_packet_recv;
+
+    wnd->last_packet_recv = new_recv;
+
+    //push more # of empty info into data_wnd
+    count = 0;
+    while(count < more) {
+	count++;
+	info = NULL;
+	init_packet_info(&info);
+	enlist(wnd->packet_list, info);
+    }
+
+    //update last_read
+    wnd->last_packet_read = wnd->next_packet_expec - 1;
+
 }
 
 

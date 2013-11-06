@@ -71,7 +71,6 @@ struct packet_info_t {
     //struct packet_info_t *next;
 };
 
-
 struct slot_t {
 
     int hash_id;
@@ -121,7 +120,7 @@ struct GET_request_t {
 
 
 struct list_t* make_WHOHAS_packet_info(struct GET_request_t *GET_request, struct list_t *peer_list);
-void parse_chunkfile(struct GET_request_t * GET_request, char *chunkfile);
+int parse_chunkfile(struct GET_request_t * GET_request, char *chunkfile);
 uint8 *info2packet(struct packet_info_t *packet_info);
 struct packet_info_t *packet2info(uint8 *packet);
 void str2hex(char *str, uint8 *hex);
@@ -158,5 +157,8 @@ struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list);
 
 uint8 *fetch_data(char *chunk_file, int hash_id);
 int hash2id(uint8 *hash, struct list_t *id_hash_list);
+struct list_t *make_ACK_info(int ack_num, struct list_t *peer_list);
+
+int get_list_size();
 
 #endif

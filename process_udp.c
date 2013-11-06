@@ -11,6 +11,7 @@
 #include "process_udp.h"
 #include "packet.h"
 #include "spiffy.h"
+#include "ctr_send_recv.h"
 
 /* Delist a packet_info, convert it into packet and send it out 
  * Return -1 on type error, 0 on sending no packets, 1 on sending a packet
@@ -143,8 +144,7 @@ struct list_t  *process_inbound_udp(struct packet_info_t *info, int sock, bt_con
 	return NULL;
 	break;
     case DATA:
-	printf("process_inbound_udp: DATA, not implemted yet\n");
-	return NULL;
+	return process_inbound_DATA(info);
 	break;
     default:
 	DPRINTF(DEBUG_CTR, "general_recv: wrong type\n");
@@ -307,12 +307,19 @@ void compare_hash(struct list_t *slot_list, struct packet_info_t *info) {
     
 }
 
-/* Save inbound DATA packet, and generate ACK packet  */
-struct packet_info_t *process_inbound_DATA(struct GET_request_t *GET_requeset, struct packet_info_t *info) {
-    
-    printf("process_inbound_DATA not implemented yet\n");
-    return NULL;
+/* Save inbound DATA packet, and generate ACK packet
+ * Return the generated ACK if slot found, return NULL if slot not found
+ */
+struct list_t *process_inbound_DATA(struct packet_info_t *info) {
+    assert(info != NULL);
 
+    struct list_t *list = NULL;
+    int expec_num = 0;
+    expec_num = enlist_DATA_info(info);
+
+    list = make_ACK_info(expec_num-1, info->peer_list);
+
+    return list;
 }
 
 

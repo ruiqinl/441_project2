@@ -132,19 +132,22 @@ uint8 *info2packet(struct packet_info_t *packet_info){
 }
 
 /* parse chunk file, get hash_id, hash in string form and hex form  */
-void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
-    
-    FILE *fp;
-    char *p, *p1;
+int parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
+    assert(GET_request != NULL);
+    assert(chunkfile != NULL);
+
+    FILE *fp = NULL;
+    char *p = NULL;
+    char *p1 = NULL;
     struct slot_t *slot = NULL;
-    char *buf_p;
+    char *buf_p = NULL;
     int buf_len = 1024;
     char id_buf[8];
     int count;
 
     if ((fp= fopen(chunkfile, "r")) == NULL) {
 	DEBUG_PERROR("Error! parse_chunkfile, fopen");
-	exit(-1);
+	return -1;
     }
 
     count = 0;
@@ -158,12 +161,12 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 
 	if (strchr(p, '\n') == NULL) {
 	    DPRINTF(DEBUG_PACKET, "ERROR! parse_chunfile, fgets: line length of chunfile is greater than buf_len:%d\n", buf_len);
-	    exit(-1);
+	    return -1;
 	}
 	
 	if ((p1 = strchr(p, ' ')) == NULL) {
 	    DPRINTF(DEBUG_PACKET, "ERROR! parse_chunkfile, fgets: chunk file is of wrong fomat\n");
-	    exit(-1);
+	    return -1;
 	}
 
 	
@@ -180,7 +183,7 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 	p1 = strchr(p, '\n'); // should not be null
 	if (p1 - p != HASH_STR_LEN) {
 	    DPRINTF(DEBUG_PACKET, "ERROR! parse_chunkfile: p1-p != HASH_STR_LEN\n");
-	    exit(-1);
+	    return -1;
 	}
 	strncpy(slot->hash_str, p, HASH_STR_LEN);
 	slot->hash_str[HASH_STR_LEN] = '\0';
@@ -196,7 +199,8 @@ void parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 	free(buf_p);
 	buf_p = (char *)calloc(buf_len, sizeof(char));
     }
-
+    
+    return 0;
 }
 
 void init_GET_request(struct GET_request_t **p) {
@@ -743,11 +747,8 @@ struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list) {
 
     init_list(&info_list);
 
-    // turn into list of packets
-    list_size = CHUNK_SIZE / MAX_DATA;
-    if (MAX_DATA * list_size < CHUNK_SIZE)
-	++list_size;
-    assert(MAX_DATA * list_size >= CHUNK_SIZE);
+    list_size = get_list_size();
+
 
     for (i = 0; i < list_size; i++){
 	info = NULL;
@@ -766,7 +767,8 @@ struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list) {
 	info->type = (uint8)DATA;
 	info->header_len = (uint16)HEADER_LEN;
 	info->packet_len = (uint16)(HEADER_LEN + data_len);
-	info->seq_num = (uint32)i;
+	info->seq_num = (uint32)(i+1);
+	//info->seq_num = (uint32)(list_size - i);
 	info->ack_num = (uint32)0; // not used
 
 	info->data_chunk = (uint8 *)calloc(data_len, sizeof(uint8));
@@ -782,6 +784,45 @@ struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list) {
     }
 
     return info_list;
+}
+
+int get_list_size() {
+    int list_size;
+    
+    // turn into list of packets
+    list_size = CHUNK_SIZE / MAX_DATA;
+    if (MAX_DATA * list_size < CHUNK_SIZE)
+	++list_size;
+    assert(MAX_DATA * list_size >= CHUNK_SIZE);
+    
+    return list_size;
+}
+
+/* ack_num = 0, is ok, it means that the 0th packet has not been received yet  */
+struct list_t *make_ACK_info(int ack_num, struct list_t *peer_list) {
+    assert(ack_num >= 0);
+
+    struct packet_info_t *info = NULL;
+    struct list_t *list = NULL;
+
+    init_packet_info(&info);
+    init_list(&list);
+    
+    info->magic = (uint16)MAGIC;
+    info->version = (uint8)VERSION;
+    info->type = (uint8)ACK;
+    info->header_len = (uint16)HEADER_LEN;
+    info->packet_len = (uint16)HEADER_LEN;
+    info->seq_num = (uint32)0; // no used
+    info->ack_num = (uint32)ack_num;
+
+    //
+    info->peer_list = peer_list;
+
+    //
+    enlist(list, info);
+
+    return list;
 }
 
 /* Fetch data from file based on hash_id

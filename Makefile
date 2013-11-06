@@ -30,7 +30,6 @@ peer.o: peer.c
 peer: $(OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)
 
-
 make-chunks: $(MK_CHUNK_OBJS)
 	$(CC) $(CFLAGS) $(MK_CHUNK_OBJS) -o $@ $(LDFLAGS)
 

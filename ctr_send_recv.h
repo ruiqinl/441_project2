@@ -1,7 +1,7 @@
 #ifndef _CTR_SEND_RECV_H_
 #define _CTR_SEND_RECV_H_
 
-#define INIT_WND_SIZE 1
+#define INIT_WND_SIZE 2
 
 #include "list.h"
 
@@ -20,21 +20,20 @@ struct data_wnd_t {
 
 struct flow_wnd_t {
     
-    int connection_peer_id;   
-
     struct list_t *packet_list;
    
     int last_packet_read;
     int next_packet_expec;
-    int last_packet_recv;
+    int last_packet_recv; 
 
-    int capacity;
+    int capacity; // recv - expec
 };
 
 void init_ctr();
 void init_data_wnd(struct data_wnd_t **wnd);
 void init_flow_wnd(struct flow_wnd_t **wnd);
 
+int new_flow_wnd(); // call init_flow_wnd to add a new flow_wnd
 
 int general_send(int sock);
 struct packet_info_t *general_recv(int sock, bt_config_t *config);
@@ -43,6 +42,8 @@ int outbound_list_send(int sock);
 int data_wnd_list_send(int sock);
 int data_wnd_send(int sock, struct data_wnd_t *wnd);
 //int ctr_enlist(struct list_t *out_list);
+
+struct data_wnd *search_data_wnd(int id);
 
 
 // basic "enlist" functions: outbound_list_en, outbound_list_cat, enlsit_data_wnd
@@ -68,7 +69,11 @@ int data_wnd_list_cat(struct list_t *info_list);
 // rely on enlist_data_wnd
 int data_wnd_list_en(struct packet_info_t *info);
 
-void check_out_size();
-int more_out();
+int check_out_size();
+
+
+/* flow control below  */
+int enlist_DATA_info(struct packet_info_t *info);
+void update_flow_wnd(struct flow_wnd_t *wnd);
 
 #endif

@@ -136,6 +136,9 @@ void parse_haschunkfile(bt_config_t *config) {
 
 
 struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile, struct list_t *peer_list) {
+    assert(chunkfile != NULL);
+    assert(outputfile != NULL);
+    assert(peer_list != NULL);
 
     struct GET_request_t *GET_request = NULL;
     struct list_t  *WHOHAS_info_list = NULL;
@@ -145,7 +148,8 @@ struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile, stru
 
     init_GET_request(&GET_request);
 
-    parse_chunkfile(GET_request, chunkfile);
+    if (parse_chunkfile(GET_request, chunkfile) != 0)
+	return NULL;
 
     // a list of WHOHAS pakcet_info
     WHOHAS_info_list = make_WHOHAS_packet_info(GET_request, peer_list);
@@ -178,16 +182,23 @@ struct GET_request_t *handle_line(struct line_queue_t *line_queue, struct list_t
     }
 
     line_p= dequeue_line(line_queue);
+    if (line_p == NULL) {
+	DPRINTF(DEBUG_PROCESS_GET, "hanlde_lie: handle_line, dequeue_line returns NULL\n");
+	return NULL;
+    }
+
     DPRINTF(DEBUG_PROCESS_GET, "handle_line:\n%s\n", line_p->line_buf);
 
     if (strlen(line_p->line_buf) != 0) {
-	if (sscanf(line_p->line_buf, "GET %120s %120s", chunkf, outf)) {
-	    if (strlen(outf) > 0) {
-		
-		GET_request = handle_GET_request(chunkf, outf, peer_list);
-	    
-	    }
-	}	
+	if (sscanf(line_p->line_buf, "GET %120s %120s", chunkf, outf) == 2) {
+
+	    GET_request = handle_GET_request(chunkf, outf, peer_list);
+
+	} else {
+	    DPRINTF(DEBUG_PEER, "Error! wrong input format\n");
+	    return NULL;
+	}
+
 	free(line_p);
 
 	bzero(chunkf, sizeof(chunkf));
@@ -275,14 +286,13 @@ void peer_run(bt_config_t *config) {
 		    //ctr_enlist(GET_request->outbound_info_list);
 		    outbound_list_cat(GET_request->outbound_info_list);
 
-
 		    FD_SET(sock, &master_writefds); 
 
 		} else {
 		    DPRINTF(DEBUG_PACKET, "peer: nothing to handle\n");
 		}
 
-		check_out_size();
+		//check_out_size();
 	    }
 
 	    // all five kinds of packets
@@ -308,7 +318,7 @@ void peer_run(bt_config_t *config) {
 
 		}
 
-		check_out_size();
+		is_fully_received();
 	    }
 
 	    // all five kinds of packet
@@ -320,7 +330,7 @@ void peer_run(bt_config_t *config) {
 		GET_list = check_GET_req(GET_request, peer_list);
 		outbound_list_cat(GET_list);
 		
-		if (general_send(sock) == 0) {
+		if (general_send(sock) == 0) { 
 		    DPRINTF(DEBUG_PEER, "no more packet to send, fd_clr sock from writefds\n");
 		    FD_CLR(sock, &master_writefds);
 		}
