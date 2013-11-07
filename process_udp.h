@@ -16,4 +16,6 @@ void compare_hash(struct list_t *slot_list, struct packet_info_t *info);
 struct list_t *process_inbound_GET(struct packet_info_t *info, bt_config_t *config);
 struct list_t *process_inbound_DATA(struct packet_info_t *info);
 
+struct list_t* process_inbound_ACK(struct packet_info_t *packet_info);
+
 #endif

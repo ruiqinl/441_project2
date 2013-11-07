@@ -136,8 +136,7 @@ struct list_t  *process_inbound_udp(struct packet_info_t *info, int sock, bt_con
 	return process_inbound_GET(info, config);
 	break;
     case ACK:
-	printf("process_inbound_udp: ACK, not implemted yet\n");
-	return NULL;
+	return process_inbound_ACK(info);
 	break;
     case DENIED:
 	printf("process_inbound_udp: DENIED, not implemted yet\n");
@@ -359,6 +358,13 @@ int search_hash(uint8 *target_hash, struct list_t *id_hash_list) {
     return match;
 }
 
+
+struct list_t* process_inbound_ACK(struct packet_info_t *packet_info) {
+    struct list_t *ret_list = NULL;
+    init_list(&ret_list);
+    ret_list = do_inbound_ACK(packet_info);
+    return ret_list;
+}
 
 
 /*

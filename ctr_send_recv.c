@@ -25,11 +25,14 @@ static struct list_t *outbound_list = NULL; // non-data packets
 static struct list_t *data_wnd_list = NULL;
 static struct list_t *flow_wnd_list = NULL;
 
+static struct list_t *ACK_list = NULL;
+
 void init_ctr() {
     init_list(&inbound_list);
     init_list(&outbound_list);
     init_list(&data_wnd_list);
     init_list(&flow_wnd_list);
+    init_list(&ACK_list);
 }
 
 // last_pack_xx starts from 0
@@ -188,6 +191,7 @@ int data_wnd_send(int sock, struct data_wnd_t *wnd) {
 
     struct packet_info_t *info = NULL;
     int id;
+    int list_size = get_list_size();
     
     id = wnd->connection_peer_id;
 
@@ -198,7 +202,8 @@ int data_wnd_send(int sock, struct data_wnd_t *wnd) {
 	
 	// slide window
 	(wnd->last_packet_sent)++;
-	if (wnd->last_packet_avai < wnd->packet_list->length) 
+	//if (wnd->last_packet_avai < wnd->packet_list->length) 
+	if (wnd->last_packet_avai < list_size) 
 	    wnd->last_packet_avai += 1;
 
 
@@ -246,7 +251,7 @@ int is_fully_received() {
     int data_size;
     struct list_item_t *ite = NULL;
 
-    //printf("???????????????\n");
+    printf("???????????????\n");
     
     if (flow_wnd_list->end == NULL) {
 	DPRINTF(DEBUG_CTR, "is_fully_received: no flow_wnd, no need to check\n");
@@ -532,9 +537,87 @@ void update_flow_wnd(struct flow_wnd_t *wnd) {
 }
 
 
+struct list_t* do_inbound_ACK(struct packet_info_t *info){
+    struct list_item_t *iterator_wnd = NULL;
+    struct data_wnd_t *data_wnd = NULL;
+    struct packet_info_t *data_pckt = NULL;
+    struct list_t *ret_list = NULL;
+    int valid = 0;
+    int ackNum1, ackNum2, ackNum3;
+
+    iterator_wnd = get_iterator(data_wnd_list);
+    printf("step1\n");
+    while (has_next(iterator_wnd)) {
+        DPRINTF(DEBUG_CTR, "iter\n");
+        data_wnd = next(&iterator_wnd);
+
+        if (((bt_peer_t*)(info->peer_list->head->data))->id == data_wnd->connection_peer_id) {
+            enlist(ACK_list, info);
+            data_wnd->last_packet_avai += (info->ack_num - data_wnd->last_packet_acked);
+            data_wnd->last_packet_acked = info->ack_num;
+            valid += 1;
+            break;
+        }
+    }
+
+    if (!valid){
+        DPRINTF(DEBUG_CTR, "ACK packet with peer id is not found in data_wnd_list\n");
+    }
+    if (DEBUG_CTR && ACK_list->length == 1){
+        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
+    }
+    if (DEBUG_CTR && ACK_list->length == 2){
+        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
+        printf("ack_number2 = %d\n",((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
+    }
+    if (DEBUG_CTR && ACK_list->length == 3){
+        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
+        printf("ack_number2 = %d\n",((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
+        printf("ack_number3 = %d\n",((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num);
+    }
+    if (DEBUG_CTR && ACK_list->length == 4){
+        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
+        printf("ack_number2 = %d\n",((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
+        printf("ack_number3 = %d\n",((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num);
+        printf("ack_number3 = %d\n",((struct packet_info_t*) (ACK_list->head->next->next->next->data))->ack_num);
+    }
+
+    if (ACK_list->length > 3){
+        DPRINTF(DEBUG_CTR, "removing one ACK packet\n");
+        delist(ACK_list);
+    }
+    if (ACK_list->length == 3 && valid){
+        ackNum1 = ((struct packet_info_t*) (ACK_list->head->data))->ack_num;
+        ackNum2 = ((struct packet_info_t*) (ACK_list->head->next->data))->ack_num;
+        ackNum3 = ((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num;
+        if (ackNum1 == ackNum2 && ackNum2 == ackNum3){
+            DPRINTF(DEBUG_CTR, "three same ACK packets\n");
+            init_list(&ret_list);
+            data_pckt = list_ind(data_wnd->packet_list, ackNum1-1);
+            enlist(ret_list, data_pckt);
+            return ret_list;
+                
+            
+        }
+    }
+    return NULL;
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
 #ifdef _TEST_CTR_
 int main(){
-    
+
     struct data_wnd_t *data_wnd_1 = NULL;
     struct data_wnd_t *data_wnd_2 = NULL;
     struct data_wnd_t *data_wnd_3 = NULL;
@@ -545,9 +628,13 @@ int main(){
     struct packet_info_t *info_4 = NULL;
 
     init_ctr();
+
     init_data_wnd(&data_wnd_1);
+    data_wnd_1->connection_peer_id = 1;
     init_data_wnd(&data_wnd_2);
+    data_wnd_2->connection_peer_id = 2;
     init_data_wnd(&data_wnd_3);
+    data_wnd_3->connection_peer_id = 3;
 
     // addr
     int sock;
@@ -568,35 +655,39 @@ int main(){
     peer1.addr = myaddr;
     peer1.next = NULL;
     
-    bt_peer_t peer2;
-    peer2.id = 2;
-    peer2.addr = myaddr;
-    peer2.next = NULL;
+    bt_peer_t peer3;
+    peer3.id = 3;
+    peer3.addr = myaddr;
+    peer3.next = NULL;
     
     struct list_t *peer_list1 = NULL;
     init_list(&peer_list1);
     enlist(peer_list1, &peer1);
 
-    struct list_t *peer_list2 = NULL;
-    init_list(&peer_list2);
-    enlist(peer_list2, &peer2);
+    struct list_t *peer_list3 = NULL;
+    init_list(&peer_list3);
+    enlist(peer_list3, &peer3);
 
     //
     info_1 = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
-    info_1->type = DATA;
-    info_1->peer_list = peer_list1;
+    info_1->type = ACK;
+    info_1->peer_list = peer_list3;
+    info_1->ack_num = 4;
 
     info_2 = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
-    info_2->type = DATA;
-    info_2->peer_list = peer_list2;
+    info_2->type = ACK;
+    info_2->peer_list = peer_list3;
+    info_2->ack_num = 2;
 
     info_3 = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
-    info_3->type = DATA;
-    info_3->peer_list = peer_list2;
+    info_3->type = ACK;
+    info_3->peer_list = peer_list3;
+    info_3->ack_num = 2;
 
     info_4 = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
-    info_4->type = DATA;
-    info_4->peer_list = peer_list1;
+    info_4->type = ACK;
+    info_4->peer_list = peer_list3;
+    info_4->ack_num = 2;
 
     // general
     general_enlist(info_1);
@@ -604,6 +695,8 @@ int main(){
     general_enlist(info_3);
     general_enlist(info_4);
 
+    enlist(data_wnd_list, data_wnd_1);
+    enlist(data_wnd_list, data_wnd_2);
     enlist(data_wnd_list, data_wnd_3);
 
     // not general
@@ -624,8 +717,47 @@ int main(){
 	exit(-1);
     }
 
-    data_wnd_list_send(sock);
+    struct list_t *packetsList = NULL;
+    init_list(&packetsList);
+    enlist(packetsList, info_1);
+    enlist(packetsList, info_2);
+    enlist(packetsList, info_3);
+    enlist(packetsList, info_4);
 
+
+    data_wnd_3->packet_list = packetsList;
+
+    struct list_t *ret_list1 = NULL;
+    struct list_t *ret_list2 = NULL;
+    struct list_t *ret_list3 = NULL;
+    struct list_t *ret_list4 = NULL;
+
+    ret_list1 = do_inbound_ACK(info_1);
+    ret_list2 = do_inbound_ACK(info_2);
+    ret_list3 = do_inbound_ACK(info_3);
+    ret_list4 = do_inbound_ACK(info_4);
+    if (ret_list1 == NULL){
+        printf("ret_list1 == NULL\n");
+    }
+    if (ret_list2 == NULL){
+        printf("ret_list2 == NULL\n");
+    }
+    if (ret_list3 == NULL){
+        printf("ret_list3 == NULL\n");
+    }else{
+        info_printer((struct packet_info_t*)(ret_list3->head->data));
+    }
+    if (ret_list4 == NULL){
+        printf("ret_list4 == NULL\n");
+    }else{
+        info_printer((struct packet_info_t*)(ret_list4->head->data));
+    }
+
+    printf("ack_num1 = %d\n", ((struct packet_info_t*) (ACK_list->head->data))->ack_num);
+    printf("ack_num2 = %d\n", ((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
+    printf("ack_num3 = %d\n", ((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num);
     return 0;
 }
+
+
 #endif

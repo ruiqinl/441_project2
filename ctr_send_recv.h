@@ -72,8 +72,12 @@ int data_wnd_list_en(struct packet_info_t *info);
 int check_out_size();
 
 
+struct list_t* do_inbound_ACK(struct packet_info_t *info);
+
 /* flow control below  */
 int enlist_DATA_info(struct packet_info_t *info);
 void update_flow_wnd(struct flow_wnd_t *wnd);
+
+int is_fully_received();
 
 #endif

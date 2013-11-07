@@ -748,7 +748,7 @@ struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list) {
     init_list(&info_list);
 
     list_size = get_list_size();
-
+    DPRINTF(DEBUG_PACKET, "make_DATA_info: list_size:%d\n", list_size);
 
     for (i = 0; i < list_size; i++){
 	info = NULL;

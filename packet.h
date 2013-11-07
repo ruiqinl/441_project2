@@ -29,8 +29,8 @@
 #define HASH_STR_LEN 40
 #define MAX_DATA (MAX_PACKET_LEN - HEADER_LEN)
 
-#ifdef DEBUG
-#define CHUNK_SIZE (512*6)
+#ifndef DEBUG
+#define CHUNK_SIZE (5*1024)
 #else
 #define CHUNK_SIZE (512*1024)
 #endif

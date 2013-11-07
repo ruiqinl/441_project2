@@ -206,7 +206,7 @@ void *list_ind(struct list_t *list, int ind) {
     assert(list != NULL);
     assert(ind >= 0);
     assert(ind < list->length);
-    
+     
     count = -1;
     iterator = get_iterator(list);
     while(has_next(iterator)) {
