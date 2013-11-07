@@ -154,8 +154,10 @@ int data_wnd_list_send(int sock) {
     struct data_wnd_t *data_wnd = NULL;
     struct list_item_t *iterator = NULL;
     struct list_item_t *old_iterator = NULL;
+    int list_size;
 
     iterator = get_iterator(data_wnd_list);
+    list_size = get_list_size();
         
     while (has_next(iterator)) {
 
@@ -164,10 +166,20 @@ int data_wnd_list_send(int sock) {
 	data_wnd = next(&iterator);
 	printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
 	//if (data_wnd->packet_list->length == 0) {
-	if (data_wnd->last_packet_avai == data_wnd->last_packet_sent) {
+	if (data_wnd->last_packet_acked == list_size) {
 	    printf("wnd_%d has no packet to send, delist it\n", data_wnd->connection_peer_id);
 	    delist_item(data_wnd_list, old_iterator);
 	} else {
+	    assert(data_wnd->last_packet_acked < list_size);
+
+	    // no packet in packet_list  to sent, wait for ack
+	    if (data_wnd->last_packet_sent == list_size) 
+		return 0;
+	    
+	    // no packet in congestion window to send
+	    if (data_wnd->last_packet_sent == data_wnd->last_packet_avai)
+		return 0;
+	    
 	    printf("wnd_%d has packet to send, send it\n", data_wnd->connection_peer_id);
 	    if (data_wnd_send(sock, data_wnd) == 1) {
 		// send a packet inside data_list out
@@ -191,7 +203,6 @@ int data_wnd_send(int sock, struct data_wnd_t *wnd) {
 
     struct packet_info_t *info = NULL;
     int id;
-    int list_size = get_list_size();
     
     id = wnd->connection_peer_id;
 
@@ -203,9 +214,8 @@ int data_wnd_send(int sock, struct data_wnd_t *wnd) {
 	// slide window
 	(wnd->last_packet_sent)++;
 	//if (wnd->last_packet_avai < wnd->packet_list->length) 
-	if (wnd->last_packet_avai < list_size) 
-	    wnd->last_packet_avai += 1;
-
+	//if (wnd->last_packet_avai < list_size) 
+	//  wnd->last_packet_avai += 1;
 
 	printf("data_wnd_send: wnd_%d, after sending, sent:%d avai:%d\n", id, wnd->last_packet_sent, wnd->last_packet_avai);
 	return 1;
@@ -544,17 +554,32 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
     struct list_t *ret_list = NULL;
     int valid = 0;
     int ackNum1, ackNum2, ackNum3;
+    int diff = 0;
+
+    int info_id = ((bt_peer_t*)(info->peer_list->head->data))->id;
 
     iterator_wnd = get_iterator(data_wnd_list);
-    printf("step1\n");
+    printf("?????????data_wnd_list->length:%d\n", data_wnd_list->length);
+    assert(iterator_wnd != NULL);
+    assert(iterator_wnd->data != NULL);
     while (has_next(iterator_wnd)) {
-        DPRINTF(DEBUG_CTR, "iter\n");
         data_wnd = next(&iterator_wnd);
 
-        if (((bt_peer_t*)(info->peer_list->head->data))->id == data_wnd->connection_peer_id) {
+	printf("do_inbound_ACK: info->id:%d, data_wnd->id:%d\n", info_id, data_wnd->connection_peer_id);
+        if (info_id == data_wnd->connection_peer_id) {
             enlist(ACK_list, info);
-            data_wnd->last_packet_avai += (info->ack_num - data_wnd->last_packet_acked);
-            data_wnd->last_packet_acked = info->ack_num;
+	    if (info->ack_num > data_wnd->last_packet_acked) {
+		DPRINTF(DEBUG_CTR, "do_inbound_ACK: ack_num > last_ack, move congestion window\n");
+		DPRINTF(DEBUG_CTR, "before moving, last_acked:%d, last_send:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent);
+		diff = info->ack_num - data_wnd->last_packet_acked;
+		data_wnd->last_packet_acked += diff;
+		data_wnd->last_packet_avai += diff;
+		if (data_wnd->last_packet_avai > data_wnd->packet_list->length)
+		    data_wnd->last_packet_avai = data_wnd->packet_list->length;
+		
+		DPRINTF(DEBUG_CTR, "after moving, last_acked:%d, last_send:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent);
+	    }
+
             valid += 1;
             break;
         }
