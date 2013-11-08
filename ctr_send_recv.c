@@ -62,7 +62,7 @@ void init_flow_wnd(struct flow_wnd_t **wnd) {
     (*wnd)->next_packet_expec = 1; // in initial state, next epxec is 0th packet
     (*wnd)->last_packet_recv = 0;
 
-    (*wnd)->capacity = INIT_WND_SIZE;
+    (*wnd)->capacity = 10* INIT_WND_SIZE;
 
     //memcpy((*wnd)->hash, hash, HASH_LEN);
 
@@ -126,15 +126,15 @@ int general_send(int sock) {
     int count;
 
     // send
-    printf("general_send: try outbound_list_send:\n");
+    //printf("general_send: try outbound_list_send:\n");
     if ((count = outbound_list_send(sock)) != 0) {
 	assert(count == 1);
-	printf("general_send: outbound_list_send sends a packet\n");
+	//printf("general_send: outbound_list_send sends a packet\n");
     } else {
-	printf("general_send: try data_wnd_list_send:\n");
+	//printf("general_send: try data_wnd_list_send:\n");
 	if ((count = data_wnd_list_send(sock)) != 0) {
 	    assert(count == 1);
-	    printf("general_send: data_wnd_list_send sends a packet\n");
+	    //printf("general_send: data_wnd_list_send sends a packet\n");
 	}
     }
 
@@ -167,7 +167,7 @@ int data_wnd_list_send(int sock) {
 	old_iterator = iterator;
 
 	data_wnd = next(&iterator);
-	printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
+	//printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
 	//if (data_wnd->packet_list->length == 0) {
 	if (data_wnd->last_packet_acked == list_size) {
 	    printf("wnd_%d has no packet to send, delist it\n", data_wnd->connection_peer_id);
@@ -177,16 +177,16 @@ int data_wnd_list_send(int sock) {
 
 	    // no packet in packet_list  to sent, wait for ack
 	    if (data_wnd->last_packet_sent == list_size) {
-		DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent == list_size, no packet in the wnd->packet_list to send\n");
+		//DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent == list_size, no packet in the wnd->packet_list to send\n");
 		return 0;
 	    }
 	    // no packet in congestion window to send
 	    if (data_wnd->last_packet_sent == data_wnd->last_packet_avai) {
-		DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent = last_avai, no packet in the cong_window to send\n");
+		//DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent = last_avai, no packet in the cong_window to send\n");
 		return 0;
 	    }
 	    
-	    printf("wnd_%d has packet to send, send it\n", data_wnd->connection_peer_id);
+	    //printf("wnd_%d has packet to send, send it\n", data_wnd->connection_peer_id);
 	    if (data_wnd_send(sock, data_wnd) == 1) {
 		// send a packet inside data_list out
 		return 1;
@@ -440,11 +440,10 @@ struct packet_info_t *general_recv(int sock, bt_config_t *config) {
     struct packet_info_t *info = NULL;
     bt_peer_t *peer = NULL;
     
+    //addr_len = sizeof(struct sockaddr);    
     addr = (struct sockaddr_in *)calloc(1, sizeof(struct sockaddr_in));
-    addr_len = sizeof(struct sockaddr);    
-    
     spiffy_recvfrom(sock, buf, MAX_PACKET_LEN, 0, (struct sockaddr *)addr, &addr_len);
-    
+
     info = packet2info(buf);
 
     // identify the peer sending the packet

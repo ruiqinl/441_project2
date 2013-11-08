@@ -216,7 +216,7 @@ struct GET_request_t *handle_line(struct line_queue_t *line_queue, struct list_t
 
 void peer_run(bt_config_t *config) {
     int sock;
-    int max_fd;
+    //int max_fd;
     int nfds;
     struct sockaddr_in myaddr;
     fd_set master_readfds, master_writefds;
@@ -254,9 +254,9 @@ void peer_run(bt_config_t *config) {
     FD_SET(STDIN_FILENO, &master_readfds);
     FD_SET(sock, &master_readfds);
 
-    max_fd = sock;
-    if (STDIN_FILENO > sock)
-	max_fd = STDIN_FILENO;
+    //    max_fd = sock;
+    //if (STDIN_FILENO > sock)
+    //max_fd = STDIN_FILENO;
 
     // all sorts of preparation
     parse_haschunkfile(config);
@@ -331,7 +331,7 @@ void peer_run(bt_config_t *config) {
 	    // all five kinds of packet
 	    if (FD_ISSET(sock, &writefds)) {
 
-		DPRINTF(DEBUG_PEER, "sock, write\n");
+		//DPRINTF(DEBUG_PEER, "sock, write\n");
 
 		// check if GET_request has available peers to download chunks
 		GET_list = check_GET_req(&GET_request, peer_list);

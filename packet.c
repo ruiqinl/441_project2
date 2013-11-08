@@ -143,14 +143,14 @@ int parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
     char *buf_p = NULL;
     int buf_len = 1024;
     char id_buf[8];
-    int count;
+    //int count;
 
     if ((fp= fopen(chunkfile, "r")) == NULL) {
 	DEBUG_PERROR("Error! parse_chunkfile, fopen");
 	return -1;
     }
 
-    count = 0;
+    //count = 0;
     buf_p = (char *)calloc(buf_len, sizeof(char));
     while ((p = fgets(buf_p, buf_len, fp)) != NULL) {
 
@@ -216,12 +216,16 @@ void init_GET_request(struct GET_request_t **p) {
 /* parse packet, save fields into  packet_info_t */
 struct packet_info_t *packet2info(uint8 *packet) {
 
-    uint8 *p;
+    uint8_t *p;
     struct packet_info_t *packet_info;
     int chunk_size;
-
+    //int tmp = 0;
+    
+    //tmp = sizeof(struct packet_info_t);
     p = packet;
+    
     packet_info = (struct packet_info_t *)calloc(1, sizeof(struct packet_info_t));
+    //packet_info = (struct packet_info_t *)calloc(1, tmp);
 
     uint16 magic = *(uint16 *)p;
     packet_info->magic = ntohs(magic);
@@ -249,6 +253,7 @@ struct packet_info_t *packet2info(uint8 *packet) {
     packet_info->ack_num = ntohl(ack_num);
     p += 4;    
 
+    printf("packet_len:%d, header_len:%d\n", packet_info->packet_len, packet_info->header_len);
     chunk_size = packet_info->packet_len - packet_info->header_len;
     
     switch (packet_info->type) {
@@ -263,7 +268,6 @@ struct packet_info_t *packet2info(uint8 *packet) {
 	memcpy((packet_info->hash_chunk), p, chunk_size);	
 	break;
     case GET:
-	
 	//packet_info->hash_count = 0; // actually not used
 	packet_info->hash_chunk = (uint8 *)calloc(HASH_LEN, sizeof(uint8));
 	memcpy((packet_info->hash_chunk), p, HASH_LEN); // only one hash
@@ -271,6 +275,7 @@ struct packet_info_t *packet2info(uint8 *packet) {
     case DATA:
 	//packet_info->hash_count = 0; // actually no such field 
 	packet_info->data_chunk = (uint8 *)calloc(chunk_size, sizeof(uint8));
+	
 	memcpy((packet_info->data_chunk), p, chunk_size); // only one hash
 	break;
     case ACK:
@@ -546,7 +551,7 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
     GET_request = *GET_request_dp;
 
     if (GET_request == NULL){
-	DPRINTF(DEBUG_PACKET, "check_GET_req: GET req is null, no need to check\n");
+	//DPRINTF(DEBUG_PACKET, "check_GET_req: GET req is null, no need to check\n");
 	return NULL;
     }
 

@@ -11,7 +11,7 @@ struct list_t *enlist(struct list_t *list, void *data) {
 
     t = (struct list_item_t *)calloc(1, sizeof(struct list_item_t));
     if (t == NULL) {
-	DPRINTF(DEBUG_LIST, "Warning! enlist, calloc return null\n");
+	//DPRINTF(DEBUG_LIST, "Warning! enlist, calloc return null\n");
 	return NULL;
     }
     
@@ -49,7 +49,7 @@ void *delist(struct list_t *list) {
 
     assert(list != NULL);
     if (list->length == 0) {
-	DPRINTF(DEBUG_LIST, "Warning! trying to delist an empty list\n");
+	//DPRINTF(DEBUG_LIST, "Warning! trying to delist an empty list\n");
 	return NULL;
     }
     
@@ -119,7 +119,7 @@ struct list_t *init_list(struct list_t **list) {
     *list = (struct list_t *)calloc(1, sizeof(struct list_t));
     
     if (*list == NULL) {
-	DPRINTF(DEBUG_LIST, "Warning! init_list, calloc returns null\n");
+	//DPRINTF(DEBUG_LIST, "Warning! init_list, calloc returns null\n");
 	return NULL;
     }
 

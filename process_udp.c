@@ -52,7 +52,7 @@ int process_outbound_udp(int sock, struct list_t *list) {
 	return send_info(sock, packet_info);
     }
 
-    DPRINTF(DEBUG_PROCESS_UDP, "process_outbound_udp: empty outbound_list\n");
+    //DPRINTF(DEBUG_PROCESS_UDP, "process_outbound_udp: empty outbound_list\n");
     return 0;
 }
 
