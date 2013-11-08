@@ -40,6 +40,9 @@ purpose is:
 		    packet.[c,h]	- Generate various kinds of packets
 		    processs_udp.[c,h]  - Process udp input and output based on the packet 
 					   type
+		    ctr_send_recv.[c,h] - Contains all recv and send functions, and related data structure
+		    list.[c,h]		- List library
+		    
 		    server.c
 		    sha.[c,h]
 		    spiffy.[c,h]

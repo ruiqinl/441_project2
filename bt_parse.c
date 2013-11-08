@@ -187,33 +187,35 @@ void peer_printer(void *data) {
 
     peer = (bt_peer_t *)data;
     inet_ntop(AF_INET, &(peer->addr.sin_addr), buf, INET_ADDRSTRLEN);
-    printf("%d:%s:%d", peer->id, buf, peer->addr.sin_port);
+    printf("%d:%s:%d", peer->id, buf, ntohs(peer->addr.sin_port));
 }
 
 
 /* convert addr to peer  */
 bt_peer_t *addr2peer(bt_config_t *config, struct sockaddr_in *addr) {
     bt_peer_t *p = NULL;
-    char s[INET_ADDRSTRLEN];
-    char t[INET_ADDRSTRLEN];
+    //char s[INET_ADDRSTRLEN];
+    //char t[INET_ADDRSTRLEN];
     int found = 0;
 
     p = config->peers;
     while (p != NULL) {
-	inet_ntop(AF_INET, &(addr->sin_addr), s, INET_ADDRSTRLEN);
-	inet_ntop(AF_INET, &(p->addr.sin_addr), t, INET_ADDRSTRLEN);
-	if (strcmp(s, t) == 0){
+	//inet_ntop(AF_INET, &(addr->sin_addr), s, INET_ADDRSTRLEN);
+	//inet_ntop(AF_INET, &(p->addr.sin_addr), t, INET_ADDRSTRLEN);
+	//if (strcmp(s, t) == 0){
 	    if (addr->sin_port == p->addr.sin_port) {
-		DPRINTF(DEBUG_PARSE, "addr2peer: %s:%d matches peer%d\n", s, addr->sin_port, p->id);
+		//DPRINTF(DEBUG_PARSE, "addr2peer: %s:%d matches peer%d\n", s, ntohs(addr->sin_port), p->id);
+		DPRINTF(DEBUG_PARSE, "addr2peer: port%d matches peer%d\n", ntohs(addr->sin_port), p->id);
 		found = 1;
 		break;
 	    }
-	}
+	//}
 	p = p->next;
     }
     
     if (!found) {
-	DPRINTF(DEBUG_PARSE, "addr2peer: %s:%d cannot find a matching peer\n", s, addr->sin_port);
+	//DPRINTF(DEBUG_PARSE, "addr2peer: %s:%d cannot find a matching peer\n", s, ntohs(addr->sin_port));
+	DPRINTF(DEBUG_PARSE, "addr2peer: port%d matches peer%d\n", ntohs(addr->sin_port), p->id);
 	return NULL;
     }
     

@@ -56,21 +56,6 @@ int process_outbound_udp(int sock, struct list_t *list) {
     return 0;
 }
 
-/*
-int send_info(int sock, struct packet_info_t *packet_info) {
-    char *packet;
-    
-    packet = info2packet(packet_info);
-    
-    if (spiffy_sendto(sock, packet, packet_info->packet_len, 0, (struct sockaddr *)packet_info->addr_list->sock_addr, sizeof(struct sockaddr_in)) < 0) {
-
-	DEBUG_PERROR("Error! process_outbound_IHAVE\n");
-	exit(-1);
-    }
-
-    return 0;
-}
-*/
 
 /* Return 1 on sending packet to at least one peer, 0 on failing packet to any peer, -1 on peer_list is empty  */
 int send_info(int sock, struct packet_info_t *packet_info){
