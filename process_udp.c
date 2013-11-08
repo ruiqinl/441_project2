@@ -83,6 +83,10 @@ int send_info(int sock, struct packet_info_t *packet_info){
 	assert(peer != NULL);
 	DPRINTF(DEBUG_PROCESS_UDP, "send_info: send to peer %d\n", peer->id);
 	send_packet(peer, packet, packet_info->packet_len, sock);
+
+	if (packet_info->type == DATA)
+	    set_time(peer->id);
+
 	peer = peer->next;
 	count++;
     }

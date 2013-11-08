@@ -17,6 +17,9 @@ struct list_item_t {
     void *data;
 };
 
+#define MAX(x,y) (((x) > (y)) ? (x) : (y))
+#define MIN(x,y) (((x) < (y)) ? (x) : (y))
+
 typedef void(*item_printer)(void *data);
 
 /* add data to the end of the list*/
