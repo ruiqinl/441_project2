@@ -161,6 +161,10 @@ struct GET_request_t *handle_GET_request(char *chunkfile, char *outputfile, stru
     }
 
     GET_request->outbound_info_list = WHOHAS_info_list; // no need to enlist
+
+    assert(outputfile != NULL);
+    GET_request->output_file = (char *)calloc(strlen(outputfile), sizeof(char)) + 1;
+    memcpy(GET_request->output_file, outputfile, strlen(outputfile));
     
     return GET_request;
 }
@@ -318,7 +322,10 @@ void peer_run(bt_config_t *config) {
 
 		}
 
-		is_fully_received();
+		// check if GET_request has slot finished download
+		GET_list = check_GET_req(&GET_request, peer_list);
+		outbound_list_cat(GET_list);
+		
 	    }
 
 	    // all five kinds of packet
@@ -327,7 +334,7 @@ void peer_run(bt_config_t *config) {
 		DPRINTF(DEBUG_PEER, "sock, write\n");
 
 		// check if GET_request has available peers to download chunks
-		GET_list = check_GET_req(GET_request, peer_list);
+		GET_list = check_GET_req(&GET_request, peer_list);
 		outbound_list_cat(GET_list);
 		
 		if (general_send(sock) == 0) { 

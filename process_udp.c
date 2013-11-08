@@ -75,6 +75,9 @@ int send_info(int sock, struct packet_info_t *packet_info) {
 /* Return 1 on sending packet to at least one peer, 0 on failing packet to any peer, -1 on peer_list is empty  */
 int send_info(int sock, struct packet_info_t *packet_info){
 
+    assert(packet_info->peer_list != NULL);
+    assert(packet_info->peer_list->length != 0);
+
     uint8 *packet = NULL;
     struct list_item_t *iterator = NULL;
     bt_peer_t *peer = NULL;
@@ -143,7 +146,7 @@ struct list_t  *process_inbound_udp(struct packet_info_t *info, int sock, bt_con
 	return NULL;
 	break;
     case DATA:
-	return process_inbound_DATA(info);
+	return process_inbound_DATA(info, GET_request);
 	break;
     default:
 	DPRINTF(DEBUG_CTR, "general_recv: wrong type\n");
@@ -309,12 +312,12 @@ void compare_hash(struct list_t *slot_list, struct packet_info_t *info) {
 /* Save inbound DATA packet, and generate ACK packet
  * Return the generated ACK if slot found, return NULL if slot not found
  */
-struct list_t *process_inbound_DATA(struct packet_info_t *info) {
+struct list_t *process_inbound_DATA(struct packet_info_t *info, struct GET_request_t *GET_req) {
     assert(info != NULL);
 
     struct list_t *list = NULL;
     int expec_num = 0;
-    expec_num = enlist_DATA_info(info);
+    expec_num = enlist_DATA_info(info, GET_req);
 
     list = make_ACK_info(expec_num-1, info->peer_list);
 

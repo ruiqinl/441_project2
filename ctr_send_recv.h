@@ -1,7 +1,7 @@
 #ifndef _CTR_SEND_RECV_H_
 #define _CTR_SEND_RECV_H_
 
-#define INIT_WND_SIZE 2
+#define INIT_WND_SIZE 4
 
 #include "list.h"
 
@@ -27,6 +27,8 @@ struct flow_wnd_t {
     int last_packet_recv; 
 
     int capacity; // recv - expec
+
+    uint8 hash[HASH_LEN];
 };
 
 void init_ctr();
@@ -75,9 +77,10 @@ int check_out_size();
 struct list_t* do_inbound_ACK(struct packet_info_t *info);
 
 /* flow control below  */
-int enlist_DATA_info(struct packet_info_t *info);
+int enlist_DATA_info(struct packet_info_t *info, struct GET_request_t *GET_req);
 void update_flow_wnd(struct flow_wnd_t *wnd);
 
-int is_fully_received();
+//int is_fully_received();
+int is_fully_received(struct flow_wnd_t *wnd, uint8 *slot_hash, uint8 **received_chunk);
 
 #endif

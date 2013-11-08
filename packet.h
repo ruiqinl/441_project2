@@ -82,7 +82,9 @@ struct slot_t {
     struct list_t *peer_list; // var length of peers, which graually grows by analyzing IHAVE_packet received, and the analysis is done in GET_req_t
     bt_peer_t *selected_peer; // select peer, slot to peer
     
-    struct list_t *DATA_list;
+    //struct list_t *DATA_list;
+    struct flow_wnd_t *flow_wnd;
+    uint8 *received_data;
     
 };
 
@@ -115,6 +117,8 @@ struct GET_request_t {
     struct list_t *peer_slot_list; // for demultiplexing, and prevent simutaneous download from a peer
 
     struct list_t *outbound_info_list;
+
+    char *output_file;
     
 };
 
@@ -144,9 +148,6 @@ void dump_id_hash_list(struct id_hash_t *list);
 struct slot_t *get_slot(struct list_t *peer_to_slot, bt_peer_t *peer);
 void init_slot(struct slot_t **p);
 void init_packet_info(struct packet_info_t **p);
-void init_slot(struct slot_t **p);
-
-struct list_t *check_GET_req(struct GET_request_t *GET_request, struct list_t *peer_list);
 
 struct list_t *make_GET_info(uint8* hash, bt_peer_t *peer);
 bt_peer_t *select_peer(struct slot_t *slot, struct list_t *peer_slot_list);
@@ -158,6 +159,8 @@ struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list);
 uint8 *fetch_data(char *chunk_file, int hash_id);
 int hash2id(uint8 *hash, struct list_t *id_hash_list);
 struct list_t *make_ACK_info(int ack_num, struct list_t *peer_list);
+
+struct list_t *check_GET_req(struct GET_request_t **GET_request, struct list_t *peer_list);
 
 int get_list_size();
 

@@ -11,7 +11,7 @@
 #include "list.h"
 #include "packet.h"
 #include "debug.h"
-
+#include "ctr_send_recv.h"
 
 
 struct list_t* make_WHOHAS_packet_info(struct GET_request_t * GET_request, struct list_t *peer_list){
@@ -169,7 +169,7 @@ int parse_chunkfile(struct GET_request_t *GET_request, char *chunkfile) {
 	    return -1;
 	}
 
-	
+	slot = NULL;
 	init_slot(&slot);
 	enlist(GET_request->slot_list, slot);
 	//slot_p = (struct slot_t *)calloc(1, sizeof(struct slot_t));
@@ -209,6 +209,8 @@ void init_GET_request(struct GET_request_t **p) {
     init_list(&((*p)->slot_list));
     init_list(&((*p)->id_hash_list));
     init_list(&((*p)->peer_slot_list));
+
+    (*p)->output_file = NULL;
 }
 
 /* parse packet, save fields into  packet_info_t */
@@ -515,20 +517,33 @@ void init_slot(struct slot_t **p) {
 
     init_list(&((*p)->peer_list));
     (*p)->selected_peer = NULL;
-    init_list(&((*p)->DATA_list));
+    //init_list(&((*p)->DATA_list));
+    init_flow_wnd(&((*p)->flow_wnd));
     
     (*p)->status = RAW;
+    (*p)->received_data = NULL;
 }
 
-struct list_t *check_GET_req(struct GET_request_t *GET_request, struct list_t *peer_list) {
+/* Check several thing for each slot: is the slot ready for downloading, or is the downloading done */
+struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_t *peer_list) {
     
     struct list_item_t *iterator = NULL;
+    struct list_item_t *old_ite = NULL;
+    struct list_item_t *ite = NULL;
     struct slot_t *slot = NULL;
     struct list_t *list = NULL;
     struct list_t *ret_list = NULL;
+    struct peer_slot_t *peer_slot = NULL;
     int done_count = 0;
     int ind = 0;
-    
+    int fd;
+    int slot_ind;
+    struct GET_request_t *GET_request = NULL;
+
+
+    assert(GET_request_dp != NULL);
+
+    GET_request = *GET_request_dp;
 
     if (GET_request == NULL){
 	DPRINTF(DEBUG_PACKET, "check_GET_req: GET req is null, no need to check\n");
@@ -552,8 +567,9 @@ struct list_t *check_GET_req(struct GET_request_t *GET_request, struct list_t *p
 	    // received IHAVE packet(s)
 	    assert(slot->peer_list->length != 0);
 	    assert(slot->selected_peer == NULL);
-	    assert(slot->DATA_list->length == 0);
-
+	    //assert(slot->DATA_list->length == 0);
+	    assert(slot->flow_wnd != NULL);
+	     
 	    
 	    if (select_peer(slot, GET_request->peer_slot_list) != NULL) {
 		slot->status = DOWNLOADING; // change status	
@@ -570,16 +586,70 @@ struct list_t *check_GET_req(struct GET_request_t *GET_request, struct list_t *p
 
 	case DOWNLOADING:
 	    DPRINTF(DEBUG_PACKET, "DOWNLOADING\n");
+	    
+	    assert(slot->selected_peer != NULL);
+	    
+	    if (is_fully_received(slot->flow_wnd, slot->hash_hex, &(slot->received_data))) {
+		DPRINTF(DEBUG_PACKET, "check_GET_req: is_fully_received, same hash, data is saved in the slot, change status to DONE\n");
+
+		slot->status = DONE;
+		
+		// delist the peer_slot from peer_slot_list
+		ite = get_iterator(GET_request->peer_slot_list);
+		while (has_next(ite)) {
+		    old_ite = ite;
+		    peer_slot = next(&ite);
+		    
+		    if (peer_slot->peer_id == slot->selected_peer->id) {
+			delist_item(GET_request->peer_slot_list, old_ite);
+			DPRINTF(DEBUG_PACKET, "check_GET_req: peer_slot_list removes item with peer_id=%d\n", slot->selected_peer->id);
+			break;
+		    }
+		}
+
+	    } else {
+		DPRINTF(DEBUG_PACKET, "check_GET_req: not is_fully_received\n");
+	    }
+	    
 	    // do nothing;
 	    break;
 
 	case DONE:
 	    DPRINTF(DEBUG_PACKET, "DONE\n");
 	    ++done_count;
+	    if (done_count == GET_request->slot_list->length) {
+
+		assert(GET_request->output_file);
+		DPRINTF(DEBUG_PACKET, "check_GET_req: ALL downloading done! Save to file %s\n", GET_request->output_file);
+		
+		// save data to file
+		fd = open(GET_request->output_file, O_RDWR | O_CREAT | O_TRUNC, 0644);
+		if (fd == -1) {
+		    DEBUG_PERROR("Error! check_GET_req, open");
+		    return NULL;
+		}
+		
+		for (slot_ind = 0; slot_ind < GET_request->slot_list->length; slot_ind++) {
+		    lseek(fd, slot_ind * CHUNK_SIZE, SEEK_SET);
+
+		    slot = list_ind(GET_request->slot_list, slot_ind);
+
+		    assert(slot != NULL);
+		    assert(slot->received_data != NULL);
+		    if (write(fd, slot->received_data, CHUNK_SIZE) != CHUNK_SIZE) {
+			DEBUG_PERROR("Error! check_GET_req: write");
+			return NULL;
+		    }
+		}
+		close(fd);
+
+		// re-init GET_request
+		init_GET_request(GET_request_dp);
+	    }
 	    break;
 
 	case RESTART:
-	    DPRINTF(DEBUG_PACKET, "RESTART\n");
+	    DPRINTF(DEBUG_PACKET, "RESTART?????\n");
 
 	    slot->status = RAW;// send WHOHAS, wait for IHAVE to change status to START
 
@@ -588,9 +658,9 @@ struct list_t *check_GET_req(struct GET_request_t *GET_request, struct list_t *p
 	    slot->peer_list = NULL;
 	    init_list(&(slot->peer_list));
 	    // free
-	    free_list(slot->DATA_list);
-	    slot->DATA_list = NULL;
-	    init_list(&(slot->DATA_list));
+	    //free_list(slot->DATA_list);
+	    //slot->DATA_list = NULL;
+	    //init_list(&(slot->DATA_list));
 	    
 	    ret_list = make_single_WHOHAS_info(slot->hash_hex, peer_list);
 	    cat_list(&list, &ret_list);
@@ -768,7 +838,6 @@ struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list) {
 	info->header_len = (uint16)HEADER_LEN;
 	info->packet_len = (uint16)(HEADER_LEN + data_len);
 	info->seq_num = (uint32)(i+1);
-	//info->seq_num = (uint32)(list_size - i);
 	info->ack_num = (uint32)0; // not used
 
 	info->data_chunk = (uint8 *)calloc(data_len, sizeof(uint8));

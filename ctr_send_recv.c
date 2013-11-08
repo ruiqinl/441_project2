@@ -23,7 +23,8 @@ static struct list_t *inbound_list = NULL; // all five kinds
 static struct list_t *outbound_list = NULL; // non-data packets
 
 static struct list_t *data_wnd_list = NULL;
-static struct list_t *flow_wnd_list = NULL;
+//static struct list_t *flow_wnd_list = NULL;
+//distribute each flow_wnd into corresponding slot in GET_req
 
 static struct list_t *ACK_list = NULL;
 
@@ -31,7 +32,7 @@ void init_ctr() {
     init_list(&inbound_list);
     init_list(&outbound_list);
     init_list(&data_wnd_list);
-    init_list(&flow_wnd_list);
+    //init_list(&flow_wnd_list);
     init_list(&ACK_list);
 }
 
@@ -62,6 +63,8 @@ void init_flow_wnd(struct flow_wnd_t **wnd) {
     (*wnd)->last_packet_recv = 0;
 
     (*wnd)->capacity = INIT_WND_SIZE;
+
+    //memcpy((*wnd)->hash, hash, HASH_LEN);
 
     // push capacity # of empty info
     struct packet_info_t *info = NULL;
@@ -135,7 +138,7 @@ int general_send(int sock) {
 	}
     }
 
-    return check_out_size();
+    return check_out_size(); // return # remaining packet 
 }
 
 
@@ -173,12 +176,15 @@ int data_wnd_list_send(int sock) {
 	    assert(data_wnd->last_packet_acked < list_size);
 
 	    // no packet in packet_list  to sent, wait for ack
-	    if (data_wnd->last_packet_sent == list_size) 
+	    if (data_wnd->last_packet_sent == list_size) {
+		DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent == list_size, no packet in the wnd->packet_list to send\n");
 		return 0;
-	    
+	    }
 	    // no packet in congestion window to send
-	    if (data_wnd->last_packet_sent == data_wnd->last_packet_avai)
+	    if (data_wnd->last_packet_sent == data_wnd->last_packet_avai) {
+		DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent = last_avai, no packet in the cong_window to send\n");
 		return 0;
+	    }
 	    
 	    printf("wnd_%d has packet to send, send it\n", data_wnd->connection_peer_id);
 	    if (data_wnd_send(sock, data_wnd) == 1) {
@@ -250,9 +256,8 @@ int outbound_list_en(void *data) {
     return -1;
 }
 
-int is_fully_received() {
+int is_fully_received(struct flow_wnd_t *wnd, uint8 *slot_hash, uint8 **received_data){
     
-    struct flow_wnd_t *wnd = NULL;
     struct packet_info_t *info = NULL;
     int list_size;
     int ind; 
@@ -261,8 +266,7 @@ int is_fully_received() {
     int data_size;
     struct list_item_t *ite = NULL;
 
-    printf("???????????????\n");
-    
+    /*
     if (flow_wnd_list->end == NULL) {
 	DPRINTF(DEBUG_CTR, "is_fully_received: no flow_wnd, no need to check\n");
 	return 0;
@@ -270,6 +274,7 @@ int is_fully_received() {
 
     wnd = (struct flow_wnd_t *)flow_wnd_list->end->data;
     assert(wnd != NULL);
+    */
 
     // check size
     list_size = get_list_size();
@@ -279,7 +284,7 @@ int is_fully_received() {
 	DPRINTF(DEBUG_CTR, "is_fully_received: last_packet_read != list_size, no need to check\n");
 	return 0;
     }
-    DPRINTF(DEBUG_CTR, "is_fully_received: last_packet_read== list_size, check\n");
+    DPRINTF(DEBUG_CTR, "is_fully_received: last_packet_read == list_size, check\n");
 
     assert(wnd->last_packet_read == list_size);
     
@@ -314,6 +319,13 @@ int is_fully_received() {
     char ascii[SHA1_HASH_SIZE*2+1]; // the ascii string.
     hex2ascii(hash, SHA1_HASH_SIZE, ascii);
     printf("hash:%s\n",ascii);
+
+    // compare hash, cpy if same hash
+    if (memcmp(hash, slot_hash, HASH_LEN) == 0) {
+	(*received_data) = (uint8 *)calloc(CHUNK_SIZE, sizeof(uint8));
+	memcpy((*received_data), buf, CHUNK_SIZE);
+	return 1;
+    }
 
     return 0;
 }
@@ -453,27 +465,65 @@ struct packet_info_t *general_recv(int sock, bt_config_t *config) {
 /* Locate the last flow_wnd in the flow_wnd_list, enlist the info, and adjust next_expec and last_recv of the flow_wnd 
  * Always return the next_expec number 
  */
-int enlist_DATA_info(struct packet_info_t *info) {
+int enlist_DATA_info(struct packet_info_t *info, struct GET_request_t *GET_req){ 
     assert(info != NULL);
-    assert(flow_wnd_list != NULL);
     assert(info->type == DATA);
+    assert(GET_req != NULL);
 
     struct flow_wnd_t *flow_wnd = NULL;
     struct list_item_t *ite = NULL;
+    struct list_item_t *ite_pack = NULL;
     int ind = 0;
+    int found = 0;
+    struct slot_t *slot = NULL;
+    
+    bt_peer_t *src_peer = NULL;
 
+    assert(info->peer_list != NULL);
+    src_peer = list_ind(info->peer_list, 0);
+    
+    /* Wrong! throw each flow_wnd into the matching slot in GET_req
     // if empty flow_wnd_list, init one flow_wnd
     if (flow_wnd_list->length == 0) {
 	DPRINTF(DEBUG_CTR, "enlist_data_info: create a new data_wnd\n");
 	init_flow_wnd(&flow_wnd);	
 	enlist(flow_wnd_list, flow_wnd);
     }
-    
+
     // go to last flow_wnd, since this is the list we are dealing with
     flow_wnd = (struct flow_wnd_t *)flow_wnd_list->end->data;
-    
-    // check if seq_num > last_packet_d
+    */
 
+    assert(GET_req->slot_list != NULL);
+    ite = get_iterator(GET_req->slot_list);
+
+    found = 0;
+    ind = 0;
+    assert(ite != NULL); // cannot be an empty list
+    while (has_next(ite)){
+	slot = next(&ite);
+
+	assert(slot != NULL);
+	if (slot->status != DOWNLOADING) // only find downloading slot
+	    continue;
+	
+	if (slot->selected_peer->id == src_peer->id) {
+	    DPRINTF(DEBUG_CTR, "enlist_DATA_info: inbound DATA finds matching slot_%d with peer_id=%d\n", ind, src_peer->id);
+	    found = 1;
+	    break;
+	}
+
+	++ind;
+    }
+
+    assert(found == 1);
+    assert(slot->flow_wnd != NULL);
+    assert(slot->flow_wnd->packet_list != NULL);
+
+    flow_wnd = slot->flow_wnd;
+
+    assert(flow_wnd != NULL);
+    // check if seq_num > last_packet_d
     if (info->seq_num > flow_wnd->last_packet_recv) {
 	// if greater, abandon it, 
 	DPRINTF(DEBUG_CTR, "enlist_DATA_info: DATA_info->seq_num:%d > last_packet_recv:%d, drop it\n", info->seq_num, flow_wnd->last_packet_recv);
@@ -482,16 +532,16 @@ int enlist_DATA_info(struct packet_info_t *info) {
 
 	// if smaller, accept it
 	// go to position seq_num and save it
-	DPRINTF(DEBUG_CTR, "enlist_DATA_info: DATA_info->seq_num:%d <= last_packet_recv:%d, save it to flow_wnd_%d:position_%d\n", info->seq_num, flow_wnd->last_packet_recv, flow_wnd_list->length-1, info->seq_num-1);
+	DPRINTF(DEBUG_CTR, "enlist_DATA_info: DATA_info->seq_num:%d <= last_packet_recv:%d\n", info->seq_num, flow_wnd->last_packet_recv);
     
-	ite = get_iterator(flow_wnd->packet_list);
+	ite_pack = get_iterator(flow_wnd->packet_list);
 	while (ind < (info->seq_num-1)) {
-	    assert(ite != NULL);
+	    assert(ite_pack != NULL);
 	    ind++;
-	    ite = ite->next;
+	    ite_pack = ite_pack->next;
 	}
-	assert(ite != NULL);
-	ite->data = info;
+	assert(ite_pack != NULL);
+	ite_pack->data = info;
 
 	// update 
 	DPRINTF(DEBUG_CTR, "enlist_DATA_info: before updating, last_packet_recv:%d, next_expec%d\n", flow_wnd->last_packet_recv, flow_wnd->next_packet_expec);
@@ -559,7 +609,6 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
     int info_id = ((bt_peer_t*)(info->peer_list->head->data))->id;
 
     iterator_wnd = get_iterator(data_wnd_list);
-    printf("?????????data_wnd_list->length:%d\n", data_wnd_list->length);
     assert(iterator_wnd != NULL);
     assert(iterator_wnd->data != NULL);
     while (has_next(iterator_wnd)) {
@@ -585,43 +634,25 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
         }
     }
 
-    if (!valid){
+    if (!valid) {
         DPRINTF(DEBUG_CTR, "ACK packet with peer id is not found in data_wnd_list\n");
-    }
-    if (DEBUG_CTR && ACK_list->length == 1){
-        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
-    }
-    if (DEBUG_CTR && ACK_list->length == 2){
-        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
-        printf("ack_number2 = %d\n",((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
-    }
-    if (DEBUG_CTR && ACK_list->length == 3){
-        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
-        printf("ack_number2 = %d\n",((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
-        printf("ack_number3 = %d\n",((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num);
-    }
-    if (DEBUG_CTR && ACK_list->length == 4){
-        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
-        printf("ack_number2 = %d\n",((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
-        printf("ack_number3 = %d\n",((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num);
-        printf("ack_number3 = %d\n",((struct packet_info_t*) (ACK_list->head->next->next->next->data))->ack_num);
+	return NULL;
     }
 
-    if (ACK_list->length > 3){
-        DPRINTF(DEBUG_CTR, "removing one ACK packet\n");
+    if (ACK_list->length > 3)
         delist(ACK_list);
-    }
+
     if (ACK_list->length == 3 && valid){
         ackNum1 = ((struct packet_info_t*) (ACK_list->head->data))->ack_num;
         ackNum2 = ((struct packet_info_t*) (ACK_list->head->next->data))->ack_num;
         ackNum3 = ((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num;
-        if (ackNum1 == ackNum2 && ackNum2 == ackNum3){
-            DPRINTF(DEBUG_CTR, "three same ACK packets\n");
+        if ((ackNum1 == ackNum2) && (ackNum2 == ackNum3)){
+            DPRINTF(DEBUG_CTR, "!!!!!!!!!three same ACK packets!!!!!!!!\n");
+	    exit(-1);
             init_list(&ret_list);
             data_pckt = list_ind(data_wnd->packet_list, ackNum1-1);
             enlist(ret_list, data_pckt);
             return ret_list;
-                
             
         }
     }
