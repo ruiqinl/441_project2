@@ -531,8 +531,8 @@ struct list_t *check_GET_req(struct GET_request_t *GET_request, struct list_t *p
     
 
     if (GET_request == NULL){
-	DPRINTF(DEBUG_PACKET, "check_GET_req: GET req is null, no need to check\n");
-	return NULL;
+	   //DPRINTF(DEBUG_PACKET, "check_GET_req: GET req is null, no need to check\n");
+	   return NULL;
     }
 
     init_list(&list);

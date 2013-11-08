@@ -1,7 +1,13 @@
 #ifndef _CTR_SEND_RECV_H_
 #define _CTR_SEND_RECV_H_
 
-#define INIT_WND_SIZE 2
+#define INIT_WND_SIZE 1
+#define INIT_SSTHRESH_SIZE 64
+#define TIME_OUT_DUR 2
+#define SLOW_START 0
+#define CONG_AVOID 1
+#define RTT 2
+#define TICKSPERSEC 1000 //1000 clicks = 1 second
 
 #include "list.h"
 
@@ -15,7 +21,11 @@ struct data_wnd_t {
     int last_packet_sent;
     int last_packet_avai;
 
-    int capacity;
+    int wnd_size;
+    int ssthresh;
+    int mode; //1 if it's in congestion avoidance mode
+    time_t start_t; //for time out function
+    clock_t timer; //for RTT estimation
 };
 
 struct flow_wnd_t {
@@ -26,7 +36,7 @@ struct flow_wnd_t {
     int next_packet_expec;
     int last_packet_recv; 
 
-    int capacity; // recv - expec
+    int wnd_size; // recv - expec
 };
 
 void init_ctr();
@@ -79,5 +89,8 @@ int enlist_DATA_info(struct packet_info_t *info);
 void update_flow_wnd(struct flow_wnd_t *wnd);
 
 int is_fully_received();
+
+void set_time(int sentID);
+int timeout_check();
 
 #endif

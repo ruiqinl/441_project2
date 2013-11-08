@@ -17,42 +17,42 @@
  * Return -1 on type error, 0 on sending no packets, 1 on sending a packet
  */
 int process_outbound_udp(int sock, struct list_t *list) {
-    
     struct packet_info_t *packet_info = NULL;
     
     assert(list != NULL);
     if ((packet_info = delist(list)) != NULL) {
-	if(debug & DEBUG_PROCESS_UDP) {
-	    printf("\nprocess_outbound_udp: process packet_info:\n");
-	    info_printer(packet_info);
-	}
+    	if(debug & DEBUG_PROCESS_UDP) {
+    	    printf("\nprocess_outbound_udp: process packet_info:\n");
+    	    info_printer(packet_info);
+    	}
 
-	// check type and process
-	switch(packet_info->type) {
-	case WHOHAS:
-	    DPRINTF(DEBUG_PROCESS_UDP, "switch case WHOHAS\n");
-	    break;
-	case IHAVE:
-	    DPRINTF(DEBUG_PROCESS_UDP, "switch case IHAVE\n");
-	    break;
-	case ACK:
-	    DPRINTF(DEBUG_PROCESS_UDP, "switch case ACK\n");
-	    break;
-	case GET:
-	    DPRINTF(DEBUG_PROCESS_UDP, "switch case GET\n");
-	    break;
-	case DATA:
-	    DPRINTF(DEBUG_PROCESS_UDP, "switch case DATA\n");
-	default:
-	    DPRINTF(DEBUG_PROCESS_UDP, "Error! process_outbound_udp, type does not match\n");
-	    return -1; // invalid type
-	    break;
-	}
+    	// check type and process
+    	switch(packet_info->type) {
+        	case WHOHAS:
+        	    DPRINTF(DEBUG_PROCESS_UDP, "switch case WHOHAS\n");
+        	    break;
+        	case IHAVE:
+        	    DPRINTF(DEBUG_PROCESS_UDP, "switch case IHAVE\n");
+        	    break;
+        	case ACK:
+        	    DPRINTF(DEBUG_PROCESS_UDP, "switch case ACK\n");
+        	    break;
+        	case GET:
+        	    DPRINTF(DEBUG_PROCESS_UDP, "switch case GET\n");
+        	    break;
+        	case DATA:
+        	    DPRINTF(DEBUG_PROCESS_UDP, "switch case DATA\n");
+        	default:
+        	    DPRINTF(DEBUG_PROCESS_UDP, "Error! process_outbound_udp, type does not match\n");
+        	    return -1; // invalid type
+        	    break;
+    	}
 
-	return send_info(sock, packet_info);
+
+    	return send_info(sock, packet_info);
     }
 
-    DPRINTF(DEBUG_PROCESS_UDP, "process_outbound_udp: empty outbound_list\n");
+    //DPRINTF(DEBUG_PROCESS_UDP, "process_outbound_udp: empty outbound_list\n");
     return 0;
 }
 
@@ -85,18 +85,24 @@ int send_info(int sock, struct packet_info_t *packet_info){
     // send to the peers in the peer_list of the packet_info
     iterator = get_iterator(packet_info->peer_list);
     if (iterator == NULL) {
-	DPRINTF(DEBUG_PROCESS_UDP, "Warning! send_info, info->peer_list is null\n");
-	return -1;
+    	DPRINTF(DEBUG_PROCESS_UDP, "Warning! send_info, info->peer_list is null\n");
+    	return -1;
     }
 
     count = 0;
     while (has_next(iterator)) {
-	peer = next(&iterator);
-	assert(peer != NULL);
-	DPRINTF(DEBUG_PROCESS_UDP, "send_info: send to peer %d\n", peer->id);
-	send_packet(peer, packet, packet_info->packet_len, sock);
-	peer = peer->next;
-	count++;
+    	peer = next(&iterator);
+    	assert(peer != NULL);
+    	DPRINTF(DEBUG_PROCESS_UDP, "send_info: send to peer %d\n", peer->id);
+    	send_packet(peer, packet, packet_info->packet_len, sock);
+
+        if (packet_info->type == DATA){
+            
+            set_time(peer->id);
+        }
+
+    	peer = peer->next;
+    	count++;
     }
     
     if (count == 0)

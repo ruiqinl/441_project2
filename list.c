@@ -49,8 +49,8 @@ void *delist(struct list_t *list) {
 
     assert(list != NULL);
     if (list->length == 0) {
-	DPRINTF(DEBUG_LIST, "Warning! trying to delist an empty list\n");
-	return NULL;
+	//DPRINTF(DEBUG_LIST, "Warning! trying to delist an empty list\n");
+	   return NULL;
     }
     
     assert(list->head != NULL);

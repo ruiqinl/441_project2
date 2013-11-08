@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 #include "list.h"
 #include "debug.h"
 #include "spiffy.h"
@@ -234,7 +235,8 @@ void peer_run(bt_config_t *config) {
   
     bzero(&myaddr, sizeof(myaddr));
     myaddr.sin_family = AF_INET;
-    myaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    //myaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    inet_aton("127.0.0.1", (struct in_addr*)&myaddr.sin_addr.s_addr);
     myaddr.sin_port = htons(config->myport);
     
     if (bind(sock, (struct sockaddr *) &myaddr, sizeof(myaddr)) == -1) {
@@ -298,44 +300,47 @@ void peer_run(bt_config_t *config) {
 	    // all five kinds of packets
 	    if (FD_ISSET(sock, &readfds)) { 
 
-		DPRINTF(DEBUG_PEER, "sock, read\n");
-		DPRINTF(DEBUG_PEER, "try general_recv:\n");
+    		DPRINTF(DEBUG_PEER, "sock, read\n");
+    		DPRINTF(DEBUG_PEER, "try general_recv:\n");
 
-		if ((recv_info = general_recv(sock, config)) != NULL) {
-		    
-		    reply_list = process_inbound_udp(recv_info, sock, config, GET_request);
-		    // if reply_info == NULL, no need to reply
-		    if (reply_list != NULL && reply_list->length != 0) {
-			DPRINTF(DEBUG_PEER, "Peer: reply_list is not null or empty, ");
-			DPRINTF(DEBUG_PEER, "do general_list_cat\n");
-			if (general_list_cat(reply_list) != 0)
-			    DEBUG_PERROR("Error! peer: general_list_cat\n");
-		    } else {
-			DPRINTF(DEBUG_PEER, "Peer: reply_list is null or empty, no general_list_cat\n");
-		    }
-		    // null reply_info might be the result of IHAVE, DATA packet, still need to write
-		    FD_SET(sock, &master_writefds);
+    		if ((recv_info = general_recv(sock, config)) != NULL) {
+    		    
+    		    reply_list = process_inbound_udp(recv_info, sock, config, GET_request);
+    		    // if reply_info == NULL, no need to reply
+    		    if (reply_list != NULL && reply_list->length != 0) {
+        			DPRINTF(DEBUG_PEER, "Peer: reply_list is not null or empty, ");
+        			DPRINTF(DEBUG_PEER, "do general_list_cat\n");
+    			if (general_list_cat(reply_list) != 0)
+    			    DEBUG_PERROR("Error! peer: general_list_cat\n");
+    		    } else {
+    			DPRINTF(DEBUG_PEER, "Peer: reply_list is null or empty, no general_list_cat\n");
+    		    }
+    		    // null reply_info might be the result of IHAVE, DATA packet, still need to write
+    		    FD_SET(sock, &master_writefds);
+    		}
 
-		}
-
-		is_fully_received();
+    		is_fully_received();
 	    }
 
 	    // all five kinds of packet
 	    if (FD_ISSET(sock, &writefds)) {
 
-		DPRINTF(DEBUG_PEER, "sock, write\n");
+    		//DPRINTF(DEBUG_PEER, "sock, write\n");
 
-		// check if GET_request has available peers to download chunks
-		GET_list = check_GET_req(GET_request, peer_list);
-		outbound_list_cat(GET_list);
-		
-		if (general_send(sock) == 0) { 
-		    DPRINTF(DEBUG_PEER, "no more packet to send, fd_clr sock from writefds\n");
-		    FD_CLR(sock, &master_writefds);
-		}
-		
+    		// check if GET_request has available peers to download chunks
+    		GET_list = check_GET_req(GET_request, peer_list);
+    		outbound_list_cat(GET_list);
+    		
+    		if (general_send(sock) == 0) { 
+    		    DPRINTF(DEBUG_PEER, "no more packet to send, fd_clr sock from writefds\n");
+    		    FD_CLR(sock, &master_writefds);
+    		}
+
 	    }
+        //check which peers have timed out and resend data if timedout
+        if (timeout_check() == 1){
+            FD_SET(sock, &master_writefds);
+        }
 	}
     }
 }

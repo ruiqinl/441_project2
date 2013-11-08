@@ -7,6 +7,7 @@
 #include <string.h>
 #include <assert.h>
 #include <tgmath.h>
+#include <time.h>
 #include "process_udp.h"
 #include "list.h"
 #include "ctr_send_recv.h"
@@ -24,7 +25,6 @@ static struct list_t *outbound_list = NULL; // non-data packets
 
 static struct list_t *data_wnd_list = NULL;
 static struct list_t *flow_wnd_list = NULL;
-
 static struct list_t *ACK_list = NULL;
 
 void init_ctr() {
@@ -46,8 +46,11 @@ void init_data_wnd(struct data_wnd_t **wnd) {
     (*wnd)->last_packet_acked = 0;
     (*wnd)->last_packet_sent = 0;
     (*wnd)->last_packet_avai = 0;
-
-    (*wnd)->capacity = INIT_WND_SIZE; // when do congestion control, window size changes
+    (*wnd)->start_t = NULL;
+    (*wnd)->timer = NULL;
+    (*wnd)->mode = SLOW_START;
+    (*wnd)->wnd_size = INIT_WND_SIZE; // when do congestion control, window size changes
+    (*wnd)->ssthresh = INIT_SSTHRESH_SIZE;
     
 }
 
@@ -61,13 +64,13 @@ void init_flow_wnd(struct flow_wnd_t **wnd) {
     (*wnd)->next_packet_expec = 1; // in initial state, next epxec is 0th packet
     (*wnd)->last_packet_recv = 0;
 
-    (*wnd)->capacity = INIT_WND_SIZE;
+    (*wnd)->wnd_size = INIT_WND_SIZE;
 
-    // push capacity # of empty info
+    // push wnd_size # of empty info
     struct packet_info_t *info = NULL;
     int ind = 0;
     
-    while (ind < (*wnd)->capacity) {
+    while (ind < (*wnd)->wnd_size) {
 	ind++;
 	info = NULL;
 	init_packet_info(&info);
@@ -107,8 +110,8 @@ int enlist_data_wnd(struct data_wnd_t *wnd, struct packet_info_t *info) {
 
     enlist(wnd->packet_list, info);
 
-    if (wnd->last_packet_avai < wnd->capacity) {
-	(wnd->last_packet_avai)++;
+    if (wnd->last_packet_avai < wnd->wnd_size) {
+	(wnd->last_packet_avai) = wnd->wnd_size;
 	DPRINTF(DEBUG_CTR, "enlist_data_wnd: wnd_%d, avai increase to: %d\n", wnd->connection_peer_id, wnd->last_packet_avai);
 	return 0;
     }
@@ -123,12 +126,12 @@ int general_send(int sock) {
     int count;
 
     // send
-    printf("general_send: try outbound_list_send:\n");
+    //printf("general_send: try outbound_list_send:\n");
     if ((count = outbound_list_send(sock)) != 0) {
 	assert(count == 1);
 	printf("general_send: outbound_list_send sends a packet\n");
     } else {
-	printf("general_send: try data_wnd_list_send:\n");
+	//printf("general_send: try data_wnd_list_send:\n");
 	if ((count = data_wnd_list_send(sock)) != 0) {
 	    assert(count == 1);
 	    printf("general_send: data_wnd_list_send sends a packet\n");
@@ -164,7 +167,7 @@ int data_wnd_list_send(int sock) {
 	old_iterator = iterator;
 
 	data_wnd = next(&iterator);
-	printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
+	//printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
 	//if (data_wnd->packet_list->length == 0) {
 	if (data_wnd->last_packet_acked == list_size) {
 	    printf("wnd_%d has no packet to send, delist it\n", data_wnd->connection_peer_id);
@@ -183,7 +186,9 @@ int data_wnd_list_send(int sock) {
 	    printf("wnd_%d has packet to send, send it\n", data_wnd->connection_peer_id);
 	    if (data_wnd_send(sock, data_wnd) == 1) {
 		// send a packet inside data_list out
-		return 1;
+            data_wnd->start_t = time(NULL);
+            DPRINTF(DEBUG_CTR, "time exists: %d\n", (data_wnd->start_t != NULL));
+		  return 1;
 	    }
 	}
     }
@@ -198,8 +203,8 @@ int data_wnd_list_send(int sock) {
  */
 int data_wnd_send(int sock, struct data_wnd_t *wnd) {
     // last_packet_acked/avai/sent
-
-    assert(wnd->last_packet_sent < wnd->last_packet_avai);
+    printf("last_packet_acked: %d, last_packet_sent: %d, last_packet_avai: %d\n", wnd->last_packet_acked, wnd->last_packet_sent, wnd->last_packet_avai);
+    assert(wnd->last_packet_sent <= wnd->last_packet_avai);
 
     struct packet_info_t *info = NULL;
     int id;
@@ -395,7 +400,7 @@ int data_wnd_list_en(struct packet_info_t *info) {
     while (has_next(iterator)) {
 	data_wnd = next(&iterator);
 	if (id == data_wnd->connection_peer_id) {
-	    DPRINTF(DEBUG_CTR, "data_wnd_list_en: find existing data_wnd with id=%d\n", id);
+	    //DPRINTF(DEBUG_CTR, "data_wnd_list_en: find existing data_wnd with id=%d\n", id);
 	    enlist_data_wnd(data_wnd, info);
 
 	    found = 1;
@@ -568,43 +573,57 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
 	printf("do_inbound_ACK: info->id:%d, data_wnd->id:%d\n", info_id, data_wnd->connection_peer_id);
         if (info_id == data_wnd->connection_peer_id) {
             enlist(ACK_list, info);
-	    if (info->ack_num > data_wnd->last_packet_acked) {
-		DPRINTF(DEBUG_CTR, "do_inbound_ACK: ack_num > last_ack, move congestion window\n");
-		DPRINTF(DEBUG_CTR, "before moving, last_acked:%d, last_send:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent);
-		diff = info->ack_num - data_wnd->last_packet_acked;
-		data_wnd->last_packet_acked += diff;
-		data_wnd->last_packet_avai += diff;
-		if (data_wnd->last_packet_avai > data_wnd->packet_list->length)
-		    data_wnd->last_packet_avai = data_wnd->packet_list->length;
-		
-		DPRINTF(DEBUG_CTR, "after moving, last_acked:%d, last_send:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent);
-	    }
 
-            valid += 1;
-            break;
+    	    if (info->ack_num > data_wnd->last_packet_acked) {
+
+                if (data_wnd->wnd_size < data_wnd->ssthresh){
+                    //SLOW_START
+                    data_wnd->mode = SLOW_START;
+                    (data_wnd->wnd_size)++;
+                    (data_wnd->last_packet_avai)++;
+        		} else{
+                    DPRINTF(DEBUG_CTR, "IN CONG_AVOID\n");
+                    //increase after a roundtrip time
+                    data_wnd->mode = CONG_AVOID;
+                    if (data_wnd->timer == NULL){
+                        //first time entering CONG_AVOID mode
+                        data_wnd->timer = clock();
+                    }else{
+                        //still in CONG_AVOID mode;
+                        if (((int)data_wnd->timer) > RTT * TICKSPERSEC){
+                            (data_wnd->wnd_size) += (((int)data_wnd->timer) / (RTT*TICKSPERSEC));
+                            data_wnd->last_packet_avai += (((int)data_wnd->timer) / (RTT*TICKSPERSEC));
+                            data_wnd->timer = (clock_t*)(((int)data_wnd->timer) % (RTT*TICKSPERSEC));
+                        }
+                    }
+                    
+
+
+
+                }
+
+                //DPRINTF(DEBUG_CTR, "do_inbound_ACK: ack_num > last_ack, move congestion window\n");
+        		//DPRINTF(DEBUG_CTR, "before moving, last_acked:%d, last_send:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent);
+        		diff = info->ack_num - data_wnd->last_packet_acked;
+        		data_wnd->last_packet_acked += diff;
+        		data_wnd->last_packet_avai += diff;
+
+                if (data_wnd->last_packet_avai > data_wnd->packet_list->length){
+                    data_wnd->last_packet_avai = data_wnd->packet_list->length;
+                    data_wnd->wnd_size = data_wnd->last_packet_avai - data_wnd->last_packet_acked;
+                }
+
+        		
+        		DPRINTF(DEBUG_CTR, "after moving, last_acked:%d, last_send:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent);
+    	    }
+
+                valid += 1;
+                break;
         }
     }
 
     if (!valid){
         DPRINTF(DEBUG_CTR, "ACK packet with peer id is not found in data_wnd_list\n");
-    }
-    if (DEBUG_CTR && ACK_list->length == 1){
-        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
-    }
-    if (DEBUG_CTR && ACK_list->length == 2){
-        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
-        printf("ack_number2 = %d\n",((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
-    }
-    if (DEBUG_CTR && ACK_list->length == 3){
-        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
-        printf("ack_number2 = %d\n",((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
-        printf("ack_number3 = %d\n",((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num);
-    }
-    if (DEBUG_CTR && ACK_list->length == 4){
-        printf("ack_number1 = %d\n",((struct packet_info_t*) (ACK_list->head->data))->ack_num);
-        printf("ack_number2 = %d\n",((struct packet_info_t*) (ACK_list->head->next->data))->ack_num);
-        printf("ack_number3 = %d\n",((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num);
-        printf("ack_number3 = %d\n",((struct packet_info_t*) (ACK_list->head->next->next->next->data))->ack_num);
     }
 
     if (ACK_list->length > 3){
@@ -617,8 +636,22 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
         ackNum3 = ((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num;
         if (ackNum1 == ackNum2 && ackNum2 == ackNum3){
             DPRINTF(DEBUG_CTR, "three same ACK packets\n");
+
+            if (data_wnd->wnd_size <= data_wnd->ssthresh){
+                //SLOW_START
+                DPRINTF(DEBUG_CTR, "SLOW_START lost packet\n");
+                data_wnd->ssthresh = MAX((data_wnd->wnd_size)/2,2);
+            }else{
+                //CONG_AVOID
+                DPRINTF(DEBUG_CTR, "CONG_AVOID lost packet\n");
+                data_wnd->ssthresh = MAX((data_wnd->wnd_size)/2,2);
+                data_wnd->last_packet_sent = data_wnd->last_packet_acked;
+                data_wnd->wnd_size = 1;
+                data_wnd->last_packet_avai = data_wnd->last_packet_acked + data_wnd->wnd_size;
+
+            }
             init_list(&ret_list);
-            data_pckt = list_ind(data_wnd->packet_list, ackNum1-1);
+            data_pckt = list_ind(data_wnd->packet_list, ackNum1);
             enlist(ret_list, data_pckt);
             return ret_list;
                 
@@ -626,6 +659,62 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
         }
     }
     return NULL;
+
+}
+
+void set_time(int sentID){
+    struct list_item_t *iterator_wnd = NULL;
+    struct data_wnd_t *data_wnd = NULL;
+
+    iterator_wnd = get_iterator(data_wnd_list);
+    if (iterator_wnd == NULL){
+        DPRINTF(DEBUG_PROCESS_UDP, "ERROR data_wnd_list is empty after sent a data packet");
+    }
+    assert(iterator_wnd != NULL);
+    while (has_next(iterator_wnd)) {
+        data_wnd = next(&iterator_wnd);
+        if (data_wnd->connection_peer_id == sentID){
+            DPRINTF(DEBUG_PROCESS_UDP, "start_t is set");
+            data_wnd->start_t = time(NULL);
+            break;
+        }
+    }
+
+}
+
+//returns 1 if something timed out, otherwise return 0
+int timeout_check(){
+    struct list_item_t *iterator_wnd = NULL;
+    struct data_wnd_t *data_wnd = NULL;
+    time_t end_t;
+    double diff_t;
+
+    iterator_wnd = get_iterator(data_wnd_list);
+    if (iterator_wnd == NULL){
+        return 0;
+    }
+    assert(iterator_wnd != NULL);
+    assert(iterator_wnd->data != NULL);
+    while (has_next(iterator_wnd)) {
+        data_wnd = next(&iterator_wnd);
+        if (data_wnd->start_t == NULL){
+            DPRINTF(DEBUG_PROCESS_UDP, "TIMEOUT: Hasn't sent anything to this peer yet\n");
+            return 0;
+        }
+        time(&end_t);
+        diff_t = difftime(end_t, data_wnd->start_t);
+        if (diff_t > TIME_OUT_DUR){
+            //timedout
+            //move last sent to last acked
+            DPRINTF(DEBUG_PROCESS_UDP, "TIMEOUT: timedout from peer %d\n", data_wnd->connection_peer_id);
+            data_wnd->last_packet_sent = data_wnd->last_packet_acked;
+            data_wnd->ssthresh = MAX((data_wnd->wnd_size)/2,2);
+            data_wnd->wnd_size = 1;
+            data_wnd->last_packet_avai = data_wnd->last_packet_acked + data_wnd->wnd_size;
+            return 1;
+        }
+    }
+    return 0;
 
 }
 

@@ -1,5 +1,7 @@
 #ifndef _LIST_H_
 #define _LIST_H_
+#define MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define MIN(x, y) (((x) < (y)) ? (x) : (y))
 
 struct list_t {
     
