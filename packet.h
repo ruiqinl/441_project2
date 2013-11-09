@@ -29,11 +29,7 @@
 #define HASH_STR_LEN 40
 #define MAX_DATA (MAX_PACKET_LEN - HEADER_LEN)
 
-#ifndef DEBUG
-#define CHUNK_SIZE (5*1024)
-#else
 #define CHUNK_SIZE (512*1024)
-#endif
 
 #define INIT_ARRAY_SIZE 128
 
@@ -168,5 +164,7 @@ struct list_t *make_ACK_info(int ack_num, struct list_t *peer_list);
 struct list_t *check_GET_req(struct GET_request_t **GET_request, struct list_t *peer_list);
 
 int get_list_size();
+
+void remove_peer(struct list_t *peer_slot_list, int id);
 
 #endif

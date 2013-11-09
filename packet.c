@@ -533,12 +533,10 @@ void init_slot(struct slot_t **p) {
 struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_t *peer_list) {
     
     struct list_item_t *iterator = NULL;
-    struct list_item_t *old_ite = NULL;
-    struct list_item_t *ite = NULL;
+
     struct slot_t *slot = NULL;
     struct list_t *list = NULL;
     struct list_t *ret_list = NULL;
-    struct peer_slot_t *peer_slot = NULL;
     int done_count = 0;
     int ind = 0;
     int fd;
@@ -572,9 +570,7 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
 	    // received IHAVE packet(s)
 	    assert(slot->peer_list->length != 0);
 	    assert(slot->selected_peer == NULL);
-	    //assert(slot->DATA_list->length == 0);
 	    assert(slot->flow_wnd != NULL);
-	     
 	    
 	    if (select_peer(slot, GET_request->peer_slot_list) != NULL) {
 		slot->status = DOWNLOADING; // change status	
@@ -594,11 +590,28 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
 	    
 	    assert(slot->selected_peer != NULL);
 	    
-	    if (is_fully_received(slot->flow_wnd, slot->hash_hex, &(slot->received_data))) {
+	    int ret;
+	    ret = is_fully_received(slot->flow_wnd, slot->hash_hex, &(slot->received_data));
+
+	    if (ret == -1) {
+		// last_read != list_size
+		break;
+	    } else if (ret == 0) {
+		// differetn hash
+		DPRINTF(DEBUG_PACKET, "check_GET_req: fully received, but hash does not match, RESTART this slot\n");
+		slot->status = RESTART;
+		break;
+	    } else {
+		// fully received, and same hash
+		assert(ret == 1);
+
 		DPRINTF(DEBUG_PACKET, "check_GET_req: is_fully_received, same hash, data is saved in the slot, change status to DONE\n");
 
 		slot->status = DONE;
+
+		remove_peer(GET_request->peer_slot_list, slot->selected_peer->id);
 		
+		/*
 		// delist the peer_slot from peer_slot_list
 		ite = get_iterator(GET_request->peer_slot_list);
 		while (has_next(ite)) {
@@ -611,12 +624,12 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
 			break;
 		    }
 		}
+		
+		printf("Error! failed removing peer_slot after downloading\n");
+		assert(0);*/
+	    } 
+		
 
-	    } else {
-		DPRINTF(DEBUG_PACKET, "check_GET_req: not is_fully_received\n");
-	    }
-	    
-	    // do nothing;
 	    break;
 
 	case DONE:
@@ -654,21 +667,32 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
 	    break;
 
 	case RESTART:
-	    DPRINTF(DEBUG_PACKET, "RESTART?????\n");
+	    
+	    // send WHOAHS, delete current wnd, remove peer_slot, goto RAW
+	    DPRINTF(DEBUG_PACKET, "RESTART\n");
 
-	    slot->status = RAW;// send WHOHAS, wait for IHAVE to change status to START
+	    //
+	    remove_peer(GET_request->peer_slot_list, slot->selected_peer->id);
 
+	    //
 	    slot->selected_peer = NULL;
-	    // don't free
+
 	    slot->peer_list = NULL;
 	    init_list(&(slot->peer_list));
-	    // free
-	    //free_list(slot->DATA_list);
-	    //slot->DATA_list = NULL;
-	    //init_list(&(slot->DATA_list));
-	    
+
+	    slot->received_data = NULL;
+
+	    slot->flow_wnd = NULL;
+	    init_flow_wnd(&(slot->flow_wnd));
+
+	    slot->status = RAW;// send WHOHAS, wait for IHAVE to change status to START
+		
+	    //
 	    ret_list = make_single_WHOHAS_info(slot->hash_hex, peer_list);
+	    
 	    cat_list(&list, &ret_list);
+
+
 	    break;
 
 	}
@@ -680,6 +704,33 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
     return list;
 }
 
+
+void remove_peer(struct list_t *peer_slot_list, int id){
+    assert(peer_slot_list != NULL);
+    assert(id >= 0);
+    
+    struct list_item_t *ite = NULL;
+    struct list_item_t *old_ite = NULL;
+    struct peer_slot_t *peer_slot = NULL;
+    int removed = 0;
+
+    // delist the peer_slot from peer_slot_list
+    ite = get_iterator(peer_slot_list);
+    while (has_next(ite)) {
+	old_ite = ite;
+	peer_slot = next(&ite);
+		    
+	if (peer_slot->peer_id == id) {
+	    delist_item(peer_slot_list, old_ite);
+	    DPRINTF(DEBUG_PACKET, "check_GET_req: peer_slot_list removes item with peer_id=%d\n", id);
+
+	    removed = 1;
+	}
+    }
+
+    assert(removed == 1);
+}
+
 struct list_t *make_single_WHOHAS_info(uint8 *hash, struct list_t *peer_list) {
     struct packet_info_t *info = NULL;
     struct list_t *info_list = NULL;
@@ -687,11 +738,10 @@ struct list_t *make_single_WHOHAS_info(uint8 *hash, struct list_t *peer_list) {
 
     assert(hash != NULL);
     assert(peer_list != NULL);
-    assert(peer_list->length == 1);
 
     init_packet_info(&info);
     init_list(&info_list);
-    packet_len = HEADER_LEN + BYTE_LEN + BYTE_LEN;
+    packet_len = HEADER_LEN + BYTE_LEN + HASH_LEN;
 
     info->magic = (uint16)MAGIC;
     info->version = (uint8)VERSION;
@@ -702,8 +752,9 @@ struct list_t *make_single_WHOHAS_info(uint8 *hash, struct list_t *peer_list) {
     info->ack_num = (uint32)0;
     
     info->hash_count = 1;
-    info->hash_chunk = hash;
-    //memcpy(info->hash_chunk, hash, HASH_LEN);
+    //info->hash_chunk = hash;
+    info->hash_chunk = (uint8*)calloc(HASH_LEN, sizeof(uint8));
+    memcpy(info->hash_chunk, hash, HASH_LEN);
 
     info->peer_list = peer_list;
     //cat_list(&(info->peer_list), &peer_list);

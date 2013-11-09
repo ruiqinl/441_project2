@@ -370,6 +370,7 @@ int outbound_list_en(void *data) {
     return -1;
 }
 
+/* Different size, return -1; different hash return 0, same hash return 1 */
 int is_fully_received(struct flow_wnd_t *wnd, uint8 *slot_hash, uint8 **received_data){
     
     struct packet_info_t *info = NULL;
@@ -380,23 +381,13 @@ int is_fully_received(struct flow_wnd_t *wnd, uint8 *slot_hash, uint8 **received
     int data_size;
     struct list_item_t *ite = NULL;
 
-    /*
-    if (flow_wnd_list->end == NULL) {
-	DPRINTF(DEBUG_CTR, "is_fully_received: no flow_wnd, no need to check\n");
-	return 0;
-    }
-
-    wnd = (struct flow_wnd_t *)flow_wnd_list->end->data;
-    assert(wnd != NULL);
-    */
-
     // check size
     list_size = get_list_size();
 
     DPRINTF(DEBUG_CTR, "is_fully_received: last_pack_read:%d, list_size:%d\n", wnd->last_packet_read, list_size);
     if (wnd->last_packet_read != list_size) {
 	DPRINTF(DEBUG_CTR, "is_fully_received: last_packet_read != list_size, no need to check\n");
-	return 0;
+	return -1;
     }
     DPRINTF(DEBUG_CTR, "is_fully_received: last_packet_read == list_size, check\n");
 
@@ -620,6 +611,7 @@ int enlist_DATA_info(struct packet_info_t *info, struct GET_request_t *GET_req){
 	if (slot->status != DOWNLOADING) // only find downloading slot
 	    continue;
 	
+	printf("%d, %d\n", slot->selected_peer->id, src_peer->id);
 	if (slot->selected_peer->id == src_peer->id) {
 	    DPRINTF(DEBUG_CTR, "enlist_DATA_info: inbound DATA finds matching slot_%d with peer_id=%d\n", ind, src_peer->id);
 	    found = 1;
@@ -630,6 +622,8 @@ int enlist_DATA_info(struct packet_info_t *info, struct GET_request_t *GET_req){
     }
 
     assert(found == 1);
+
+    
     assert(slot->flow_wnd != NULL);
     assert(slot->flow_wnd->packet_list != NULL);
 
