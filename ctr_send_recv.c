@@ -7,6 +7,7 @@
 #include <string.h>
 #include <assert.h>
 #include <tgmath.h>
+#include <time.h>
 #include "process_udp.h"
 #include "list.h"
 #include "ctr_send_recv.h"
@@ -26,14 +27,13 @@ static struct list_t *data_wnd_list = NULL;
 //static struct list_t *flow_wnd_list = NULL;
 //distribute each flow_wnd into corresponding slot in GET_req
 
-static struct list_t *ACK_list = NULL;
+
+
 
 void init_ctr() {
     init_list(&inbound_list);
     init_list(&outbound_list);
     init_list(&data_wnd_list);
-    //init_list(&flow_wnd_list);
-    init_list(&ACK_list);
 }
 
 // last_pack_xx starts from 0
@@ -48,7 +48,13 @@ void init_data_wnd(struct data_wnd_t **wnd) {
     (*wnd)->last_packet_sent = 0;
     (*wnd)->last_packet_avai = 0;
 
-    (*wnd)->capacity = INIT_WND_SIZE; // when do congestion control, window size changes
+    (*wnd)->size = INIT_WND_SIZE; // when do congestion control, window size changes
+    (*wnd)->ssthresh = INIT_SSTHRESH;
+    (*wnd)->mode = SLOW_START;
+
+    init_list(&((*wnd)->ACK_list));
+
+    (*wnd)->time = 0;
     
 }
 
@@ -62,7 +68,7 @@ void init_flow_wnd(struct flow_wnd_t **wnd) {
     (*wnd)->next_packet_expec = 1; // in initial state, next epxec is 0th packet
     (*wnd)->last_packet_recv = 0;
 
-    (*wnd)->capacity = 10* INIT_WND_SIZE;
+    (*wnd)->size = 10* INIT_WND_SIZE;
 
     //memcpy((*wnd)->hash, hash, HASH_LEN);
 
@@ -70,7 +76,7 @@ void init_flow_wnd(struct flow_wnd_t **wnd) {
     struct packet_info_t *info = NULL;
     int ind = 0;
     
-    while (ind < (*wnd)->capacity) {
+    while (ind < (*wnd)->size) {
 	ind++;
 	info = NULL;
 	init_packet_info(&info);
@@ -79,6 +85,111 @@ void init_flow_wnd(struct flow_wnd_t **wnd) {
     (*wnd)->last_packet_recv = ind;
 
 }
+
+int check_timeout(){
+    struct list_item_t *ite = NULL;
+    struct data_wnd_t *data_wnd = NULL;
+    
+    // could be empty
+    if (data_wnd_list->length == 0)
+	return 0;
+
+    ite = get_iterator(data_wnd_list);
+
+    assert(ite != NULL);
+    while (has_next(ite)) {
+
+	data_wnd = next(&ite);
+
+	assert(data_wnd != NULL);
+	if (check_cong_wnd_timeout(data_wnd))
+	    packet_loss(data_wnd);
+    }
+
+    return 0;
+}
+
+
+/* check timeout of each packet in the cong_wnd between ack and sent
+ * return 1 if anyone of them is timeout
+ * return 0 if no timeout
+ */
+int check_cong_wnd_timeout (struct data_wnd_t *wnd) {
+    assert(wnd != NULL);
+    
+    struct packet_info_t *info = NULL;
+    struct list_item_t *ite = NULL;
+
+    int out = 0;
+    int i;
+    int count;
+
+    time_t cur_time = 0;
+    time_t time_diff = 0;
+
+    count = wnd->last_packet_sent - wnd->last_packet_acked;
+    assert(count >= 0);
+
+    printf("??????count:%d\n", count);
+    ite = list_ind_ite(wnd->packet_list, wnd->last_packet_acked-1+1); //-1+1
+
+    for (i = 0; i < count; i++) {
+
+	assert(ite != NULL);
+	info = (struct packet_info_t *)(ite->data);
+	assert(info != NULL);
+	
+	time(&cur_time);
+	printf("cur_time:%ld, infotime:%ld\n", cur_time, info->time);
+	time_diff = difftime(cur_time, info->time);
+	if (time_diff > TIMEOUT) {
+	    printf("check_cong_wnd_timeout: time_diff=%ld, timeout, resend\n", time_diff);
+	    general_enlist(info);
+
+	    // set packet_loss
+	    out = 1;
+	    //info->time = cur_time; // reset when being re-sent
+	}
+
+	ite = ite->next;
+    }
+
+    return out;
+}
+
+
+
+/* Either timout or dup acks, call this; adjust_wnd is called inside
+ *
+ * in SLOW_START, go to CONG_AVOID; 
+ *    reduce ssthresh to half wnd_size, done
+ * in CONG_AVOID, relaunch SLOW_START; 
+ *    reduce ssthresh to half wnd_size, reduce wnd_size to 1, done
+ */
+int packet_loss(struct data_wnd_t *wnd) {
+    assert(wnd != NULL);
+    
+    if(wnd->mode == SLOW_START) {
+	wnd->mode = CONG_AVOID;
+	wnd->ssthresh = wnd->size/2;
+	if (wnd->ssthresh < 2)
+	    wnd->ssthresh = 2;
+	// wnd->size remains unchanged
+    } else {
+	assert(wnd->mode == CONG_AVOID);
+
+	wnd->mode = SLOW_START;
+	wnd->ssthresh = wnd->size / 2;
+	if (wnd->ssthresh < 2)
+	    wnd->ssthresh = 2;
+	wnd->size = INIT_WND_SIZE;// 1
+    }
+    
+    adjust_data_wnd(wnd);
+       
+    return 0;
+}
+
 
 int check_out_size() {
     long size = 0;
@@ -110,7 +221,7 @@ int enlist_data_wnd(struct data_wnd_t *wnd, struct packet_info_t *info) {
 
     enlist(wnd->packet_list, info);
 
-    if (wnd->last_packet_avai < wnd->capacity) {
+    if (wnd->last_packet_avai < wnd->size) {
 	(wnd->last_packet_avai)++;
 	DPRINTF(DEBUG_CTR, "enlist_data_wnd: wnd_%d, avai increase to: %d\n", wnd->connection_peer_id, wnd->last_packet_avai);
 	return 0;
@@ -168,13 +279,12 @@ int data_wnd_list_send(int sock) {
 
 	data_wnd = next(&iterator);
 	//printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
-	//if (data_wnd->packet_list->length == 0) {
 	if (data_wnd->last_packet_acked == list_size) {
 	    printf("wnd_%d has no packet to send, delist it\n", data_wnd->connection_peer_id);
 	    delist_item(data_wnd_list, old_iterator);
 	} else {
 	    assert(data_wnd->last_packet_acked < list_size);
-
+	    
 	    // no packet in packet_list  to sent, wait for ack
 	    if (data_wnd->last_packet_sent == list_size) {
 		//DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent == list_size, no packet in the wnd->packet_list to send\n");
@@ -596,36 +706,70 @@ void update_flow_wnd(struct flow_wnd_t *wnd) {
 }
 
 
+
+/* First, change wnd size based on mode
+ * Second, check dup acks, change wnd and return data_packet to resend
+ */
 struct list_t* do_inbound_ACK(struct packet_info_t *info){
-    struct list_item_t *iterator_wnd = NULL;
+    assert(info != NULL);
+
+
+    struct list_item_t *iterator = NULL;
     struct data_wnd_t *data_wnd = NULL;
     struct packet_info_t *data_pckt = NULL;
     struct list_t *ret_list = NULL;
     int valid = 0;
+    struct list_t *ACK_list = NULL;
     int ackNum1, ackNum2, ackNum3;
-    int diff = 0;
-
+    time_t cur_time;
     int info_id = ((bt_peer_t*)(info->peer_list->head->data))->id;
 
-    iterator_wnd = get_iterator(data_wnd_list);
-    assert(iterator_wnd != NULL);
-    assert(iterator_wnd->data != NULL);
-    while (has_next(iterator_wnd)) {
-        data_wnd = next(&iterator_wnd);
+    assert(data_wnd_list != NULL);
+    iterator = get_iterator(data_wnd_list);
+
+    time(&cur_time);
+
+    assert(iterator != NULL);    
+    while (has_next(iterator)) {
+	
+        data_wnd = next(&iterator);
+	assert(data_wnd != NULL);
 
 	printf("do_inbound_ACK: info->id:%d, data_wnd->id:%d\n", info_id, data_wnd->connection_peer_id);
+	
         if (info_id == data_wnd->connection_peer_id) {
-            enlist(ACK_list, info);
+
+	    assert(data_wnd->ACK_list != NULL);
+            enlist(data_wnd->ACK_list, info);	    
+
 	    if (info->ack_num > data_wnd->last_packet_acked) {
-		DPRINTF(DEBUG_CTR, "do_inbound_ACK: ack_num > last_ack, move congestion window\n");
-		DPRINTF(DEBUG_CTR, "before moving, last_acked:%d, last_send:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent);
-		diff = info->ack_num - data_wnd->last_packet_acked;
-		data_wnd->last_packet_acked += diff;
-		data_wnd->last_packet_avai += diff;
-		if (data_wnd->last_packet_avai > data_wnd->packet_list->length)
-		    data_wnd->last_packet_avai = data_wnd->packet_list->length;
+
+		DPRINTF(DEBUG_CTR, "do_inbound_ACK: ack_num > last_ack, move and adjust congestion window\n");
+
+		DPRINTF(DEBUG_CTR, "before moving, last_acked:%d, last_send:%d, last_avai:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent, data_wnd->last_packet_avai);
 		
-		DPRINTF(DEBUG_CTR, "after moving, last_acked:%d, last_send:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent);
+		// set new wnd->size , wnd->last_ack before calling adjust_data_wnd
+		data_wnd->last_packet_acked = info->ack_num;
+
+		if (data_wnd->mode == SLOW_START) {
+		    data_wnd->size += 1;
+		    if (data_wnd->size >= data_wnd->ssthresh) {
+			data_wnd->mode = CONG_AVOID;
+			data_wnd->time = cur_time; // update time
+		    }
+
+		} else {
+		    assert(data_wnd->mode == CONG_AVOID);
+		    
+		    if (difftime(cur_time, data_wnd->time) >= RTT) {
+			data_wnd->size += 1;
+			data_wnd->time = cur_time; // update time
+		    } 		    
+		}
+		
+		adjust_data_wnd(data_wnd); 
+		
+		DPRINTF(DEBUG_CTR, "after moving, last_acked:%d, last_send:%d, last_avai:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent, data_wnd->last_packet_avai);
 	    }
 
             valid += 1;
@@ -638,19 +782,29 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
 	return NULL;
     }
 
+    assert(data_wnd != NULL);
+    ACK_list = data_wnd->ACK_list;
+
+    assert(ACK_list != NULL);
     if (ACK_list->length > 3)
         delist(ACK_list);
 
-    if (ACK_list->length == 3 && valid){
+    if ((data_wnd->ACK_list->length == 3) && valid){
         ackNum1 = ((struct packet_info_t*) (ACK_list->head->data))->ack_num;
         ackNum2 = ((struct packet_info_t*) (ACK_list->head->next->data))->ack_num;
         ackNum3 = ((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num;
         if ((ackNum1 == ackNum2) && (ackNum2 == ackNum3)){
-            DPRINTF(DEBUG_CTR, "!!!!!!!!!three same ACK packets!!!!!!!!\n");
-	    exit(-1);
+            DPRINTF(DEBUG_CTR, "!!!!!!!!!three same ack_num:%d!!!!!!!!\n", ackNum1);
+	    DPRINTF(DEBUG_CTR, "do packet_loss, resend data_packet\n");
+	    
+	    packet_loss(data_wnd);// adjust is called inside
+
             init_list(&ret_list);
-            data_pckt = list_ind(data_wnd->packet_list, ackNum1-1);
+            data_pckt = list_ind(data_wnd->packet_list, ackNum1+1-1); // do +1-1
             enlist(ret_list, data_pckt);
+	    printf("enlist data_packet_%d\n", data_pckt->seq_num);
+	    
+	    assert(data_pckt->seq_num == ackNum1+1);
             return ret_list;
             
         }
@@ -658,16 +812,6 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
     return NULL;
 
 }
-
-
-
-
-
-
-
-
-
-
 
 
 #ifdef _TEST_CTR_
@@ -770,7 +914,7 @@ int main(){
     if (bind(sock, (struct sockaddr *) &myaddr, sizeof(myaddr)) == -1) {
 	perror("peer_run could not bind socket");
 	exit(-1);
-    }
+1    }
 
     struct list_t *packetsList = NULL;
     init_list(&packetsList);
@@ -787,10 +931,10 @@ int main(){
     struct list_t *ret_list3 = NULL;
     struct list_t *ret_list4 = NULL;
 
-    ret_list1 = do_inbound_ACK(info_1);
-    ret_list2 = do_inbound_ACK(info_2);
-    ret_list3 = do_inbound_ACK(info_3);
-    ret_list4 = do_inbound_ACK(info_4);
+    ret_list1 = process_inbound_ACK(info_1);
+    ret_list2 = process_inbound_ACK(info_2);
+    ret_list3 = process_inbound_ACK(info_3);
+    ret_list4 = process_inbound_ACK(info_4);
     if (ret_list1 == NULL){
         printf("ret_list1 == NULL\n");
     }

@@ -43,6 +43,8 @@
 #define DONE 0x04
 #define RESTART 0x08
 
+#define TIMEOUT 3
+
 struct addr_t {
     struct sockaddr_in *sock_addr;
     socklen_t addr_len;    
@@ -68,7 +70,10 @@ struct packet_info_t {
     // if it's inbound udp, peer_list is replaced by source peer
     struct list_t *peer_list;
 
-    //struct packet_info_t *next;
+    // time is set when the pakcet is sent out, i.e. in process_outbound_udp, switch-case DATA
+    // time is checked every time peer received some packet
+    time_t time; 
+
 };
 
 struct slot_t {

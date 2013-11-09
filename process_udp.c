@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 #include "list.h"
 #include "debug.h"
 #include "process_udp.h"
@@ -41,7 +42,7 @@ int process_outbound_udp(int sock, struct list_t *list) {
 	case GET:
 	    DPRINTF(DEBUG_PROCESS_UDP, "switch case GET\n");
 	    break;
-	case DATA:
+	case DATA:	    
 	    DPRINTF(DEBUG_PROCESS_UDP, "switch case DATA\n");
 	default:
 	    DPRINTF(DEBUG_PROCESS_UDP, "Error! process_outbound_udp, type does not match\n");
@@ -69,6 +70,11 @@ int send_info(int sock, struct packet_info_t *packet_info){
     int count;
 
     packet = info2packet(packet_info);    
+
+    if (packet_info->type == DATA) {
+	time(&(packet_info->time));
+	DPRINTF(DEBUG_PROCESS_UDP, "????send_info: send DATA_packet, set its time\n");
+    }
     
     // send to the peers in the peer_list of the packet_info
     iterator = get_iterator(packet_info->peer_list);
@@ -111,37 +117,39 @@ struct list_t  *process_inbound_udp(struct packet_info_t *info, int sock, bt_con
 
     assert(info != NULL);
     assert(config != NULL);
+    
+    struct list_t *ret_list = NULL;
     //assert(GET_request != NULL);// cannot assume this
     
     switch (info->type) {
     case WHOHAS:
-	return process_inbound_WHOHAS(info, config);
+	ret_list = process_inbound_WHOHAS(info, config);
 	break;
     case IHAVE:
-	return process_inbound_IHAVE(info, GET_request);
+	ret_list = process_inbound_IHAVE(info, GET_request);
 	break;
     case GET:
-	return process_inbound_GET(info, config);
+	ret_list = process_inbound_GET(info, config);
 	break;
     case ACK:
-	return process_inbound_ACK(info);
+	ret_list = process_inbound_ACK(info);
 	break;
     case DENIED:
 	printf("process_inbound_udp: DENIED, not implemted yet\n");
-	return NULL;
+	ret_list = NULL;
 	break;
     case DATA:
-	return process_inbound_DATA(info, GET_request);
+	ret_list = process_inbound_DATA(info, GET_request);
 	break;
     default:
 	DPRINTF(DEBUG_CTR, "general_recv: wrong type\n");
-	return NULL;
+	ret_list = NULL;
 	break;
     }
 
-    return 0;
-
+    return ret_list;
 }
+
 
 struct list_t *process_inbound_GET(struct packet_info_t *info, bt_config_t *config) {
 
@@ -347,12 +355,38 @@ int search_hash(uint8 *target_hash, struct list_t *id_hash_list) {
 }
 
 
-struct list_t* process_inbound_ACK(struct packet_info_t *packet_info) {
-    struct list_t *ret_list = NULL;
-    init_list(&ret_list);
-    ret_list = do_inbound_ACK(packet_info);
-    return ret_list;
+/* First, change wnd size based on mode
+ * Second, check dup acks, change wnd and return data_packet to resend
+ */
+struct list_t* process_inbound_ACK(struct packet_info_t *info){
+    assert(info != NULL);
+
+    return do_inbound_ACK(info);
 }
+
+
+// adjust wnd based on wnd->last_ack and and wnd->size
+// you should update these two before calling this func
+int adjust_data_wnd(struct data_wnd_t *wnd) {
+    assert(wnd != NULL);
+
+    // update last_avai
+    wnd->last_packet_avai = wnd->last_packet_acked + wnd->size;
+    if (wnd->last_packet_avai > wnd->packet_list->length)
+	wnd->last_packet_avai = wnd->packet_list->length;
+	
+    // update last_sent 
+    if (wnd->last_packet_sent > wnd->last_packet_avai)
+	wnd->last_packet_sent = wnd->last_packet_avai;
+    
+    // double check
+    assert(wnd->last_packet_acked <= wnd->last_packet_sent);
+    assert(wnd->last_packet_sent <= wnd->last_packet_avai);
+    assert(wnd->last_packet_avai <= wnd->packet_list->length);
+
+    return 0;
+}
+
 
 
 /*

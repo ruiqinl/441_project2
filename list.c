@@ -221,6 +221,30 @@ void *list_ind(struct list_t *list, int ind) {
     return NULL;
 }
 
+struct list_item_t *list_ind_ite(struct list_t *list, int ind) {
+    
+    struct list_item_t *iterator = NULL;
+    int count;
+
+    assert(list != NULL);
+    assert(ind >= 0);
+    assert(ind < list->length);
+     
+    count = -1;
+    iterator = get_iterator(list);
+    while(has_next(iterator)) {
+	++count;
+
+	if (count == ind) 
+	    return iterator;
+	else
+	    iterator = iterator->next;
+    }
+
+    return NULL;
+
+}
+
 void free_list(struct list_t *list) {
     struct list_item_t *ite = NULL;
     struct list_item_t *p = NULL;

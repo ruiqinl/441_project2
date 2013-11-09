@@ -1,9 +1,16 @@
 #ifndef _CTR_SEND_RECV_H_
 #define _CTR_SEND_RECV_H_
 
-#define INIT_WND_SIZE 4
+#define INIT_WND_SIZE 1
+#define INIT_SSTHRESH 64
+#define SLOW_START 0x01
+#define CONG_AVOID 0x10
+
+#define RTT 3
+#define TIMEOUT 3
 
 #include "list.h"
+#include "packet.h"
 
 struct data_wnd_t {
     
@@ -15,7 +22,14 @@ struct data_wnd_t {
     int last_packet_sent;
     int last_packet_avai;
 
-    int capacity;
+    int size;
+    int ssthresh;
+    int mode;
+
+    struct list_t *ACK_list;
+    
+    time_t time; // updated each time this wnd receives an ack
+
 };
 
 struct flow_wnd_t {
@@ -26,7 +40,7 @@ struct flow_wnd_t {
     int next_packet_expec;
     int last_packet_recv; 
 
-    int capacity; // recv - expec
+    int size; // recv - expec
 
     uint8 hash[HASH_LEN];
 };
@@ -82,5 +96,10 @@ void update_flow_wnd(struct flow_wnd_t *wnd);
 
 //int is_fully_received();
 int is_fully_received(struct flow_wnd_t *wnd, uint8 *slot_hash, uint8 **received_chunk);
+
+int check_timeout();
+int check_cong_wnd_timeout (struct data_wnd_t *wnd);
+int packet_loss(struct data_wnd_t *wnd);
+struct list_t* do_inbound_ACK(struct packet_info_t *info);
 
 #endif

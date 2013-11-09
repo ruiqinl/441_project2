@@ -31,5 +31,6 @@ void *next(struct list_item_t **iterator);
 void *list_ind(struct list_t *list, int ind);
 void free_list(struct list_t *list);
 int delist_item(struct list_t *list, struct list_item_t *item);
+struct list_item_t *list_ind_ite(struct list_t *list, int ind);
 
 #endif

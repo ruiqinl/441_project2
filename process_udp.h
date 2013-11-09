@@ -1,6 +1,7 @@
 #ifndef _PROCESS_UDP_H_
 #define _PROCESS_UDP_H_
 
+#include "ctr_send_recv.h"
 #include "packet.h"
 
 int process_outbound_udp(int sock, struct list_t *outbound_list);
@@ -17,5 +18,6 @@ struct list_t *process_inbound_GET(struct packet_info_t *info, bt_config_t *conf
 struct list_t *process_inbound_DATA(struct packet_info_t *info, struct GET_request_t *GET_req);
 
 struct list_t* process_inbound_ACK(struct packet_info_t *packet_info);
+int adjust_data_wnd(struct data_wnd_t *wnd);
 
 #endif

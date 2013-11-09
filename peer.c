@@ -311,12 +311,9 @@ void peer_run(bt_config_t *config) {
 		    // if reply_info == NULL, no need to reply
 		    if (reply_list != NULL && reply_list->length != 0) {
 			DPRINTF(DEBUG_PEER, "Peer: reply_list is not null or empty, ");
-			DPRINTF(DEBUG_PEER, "do general_list_cat\n");
 			if (general_list_cat(reply_list) != 0)
 			    DEBUG_PERROR("Error! peer: general_list_cat\n");
-		    } else {
-			DPRINTF(DEBUG_PEER, "Peer: reply_list is null or empty, no general_list_cat\n");
-		    }
+		    } 
 		    // null reply_info might be the result of IHAVE, DATA packet, still need to write
 		    FD_SET(sock, &master_writefds);
 
@@ -325,6 +322,11 @@ void peer_run(bt_config_t *config) {
 		// check if GET_request has slot finished download
 		GET_list = check_GET_req(&GET_request, peer_list);
 		outbound_list_cat(GET_list);
+
+		// dup ack is checked when receiving ack
+		// check timeout, enlist resend packet inside
+		if (check_timeout())
+		    DPRINTF(DEBUG_PEER, "peer: timeout happened\n");
 		
 	    }
 

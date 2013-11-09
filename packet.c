@@ -843,6 +843,7 @@ struct list_t *make_DATA_info(uint8 *data, struct list_t *peer_list) {
 	info->header_len = (uint16)HEADER_LEN;
 	info->packet_len = (uint16)(HEADER_LEN + data_len);
 	info->seq_num = (uint32)(i+1);
+	//info->seq_num = (uint32)2;
 	info->ack_num = (uint32)0; // not used
 
 	info->data_chunk = (uint8 *)calloc(data_len, sizeof(uint8));
