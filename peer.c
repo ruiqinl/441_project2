@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <time.h>
 #include "list.h"
 #include "debug.h"
 #include "spiffy.h"
@@ -26,6 +27,8 @@
 #include "process_udp.h"
 #include "ctr_send_recv.h"
 
+time_t global_time;
+
 void peer_run(bt_config_t *config);
 
 int main(int argc, char **argv) {
@@ -34,6 +37,8 @@ int main(int argc, char **argv) {
     bt_init(&config, argc, argv); 
 
     DPRINTF(DEBUG_INIT, "peer.c main beginning\n");
+    
+    time(&global_time);
 
 #ifdef TESTING
     config.identity = 1; // your group number here
@@ -225,6 +230,7 @@ void peer_run(bt_config_t *config) {
     struct GET_request_t *GET_request = NULL;
     struct list_t *reply_list = NULL;
     struct packet_info_t *recv_info = NULL;
+    
 
     //cp2:
     //struct peer_to_slot_t *peer_to_slot = NULL;
@@ -346,5 +352,6 @@ void peer_run(bt_config_t *config) {
 		
 	    }
 	}
+
     }
 }

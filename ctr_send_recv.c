@@ -28,12 +28,11 @@ static struct list_t *data_wnd_list = NULL;
 //distribute each flow_wnd into corresponding slot in GET_req
 
 
-
-
 void init_ctr() {
     init_list(&inbound_list);
     init_list(&outbound_list);
     init_list(&data_wnd_list);
+
 }
 
 // last_pack_xx starts from 0

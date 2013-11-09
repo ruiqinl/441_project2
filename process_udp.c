@@ -384,8 +384,35 @@ int adjust_data_wnd(struct data_wnd_t *wnd) {
     assert(wnd->last_packet_sent <= wnd->last_packet_avai);
     assert(wnd->last_packet_avai <= wnd->packet_list->length);
 
+    // 
+    time_t cur_time; 
+
+    time(&cur_time);
+    record_wnd_size(wnd->connection_peer_id, difftime(cur_time, global_time), wnd->last_packet_avai - wnd->last_packet_acked);
+
     return 0;
 }
+
+
+
+void record_wnd_size(int flow_id, time_t time, int size) {
+    int record_size = 1024;
+    FILE *fp = NULL;
+    char record[record_size];
+    
+    if ((fp = fopen("problem2-peer.txt", "a")) == NULL) {
+	perror("Error! record_wnd_size, fopen");
+	exit(-1);
+    }
+    
+    memset(record, 0, record_size);
+    sprintf(record, "%d\t%10ld\t%5d\n", flow_id, time, size);
+
+    fputs(record, fp);
+
+    fclose(fp);
+}
+
 
 
 

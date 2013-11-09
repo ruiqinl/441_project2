@@ -1,8 +1,11 @@
 #ifndef _PROCESS_UDP_H_
 #define _PROCESS_UDP_H_
 
+#include <time.h>
 #include "ctr_send_recv.h"
 #include "packet.h"
+
+extern time_t global_time;
 
 int process_outbound_udp(int sock, struct list_t *outbound_list);
 //int process_outbound_WHOHAS(int sock, struct packet_info_t *packet_info, bt_peer_t *peer_list);
@@ -19,5 +22,7 @@ struct list_t *process_inbound_DATA(struct packet_info_t *info, struct GET_reque
 
 struct list_t* process_inbound_ACK(struct packet_info_t *packet_info);
 int adjust_data_wnd(struct data_wnd_t *wnd);
+
+void record_wnd_size(int flow_id, time_t time, int size);
 
 #endif
