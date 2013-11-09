@@ -39,7 +39,7 @@
 #define DONE 0x04
 #define RESTART 0x08
 
-#define TIMEOUT 3
+#define MAX_TRIAL 10
 
 struct addr_t {
     struct sockaddr_in *sock_addr;
@@ -86,6 +86,8 @@ struct slot_t {
     //struct list_t *DATA_list;
     struct flow_wnd_t *flow_wnd;
     uint8 *received_data;
+
+    int trial_num;
     
 };
 
@@ -94,13 +96,6 @@ struct peer_slot_t {
     struct slot_t *slot;
 };
 
-/*
-struct peer_t {
-   bt_peer_t bt_peer;
-    //int slot;
-    struct peer_t *next;
-};
-*/
 
 struct id_hash_t {
     int id;

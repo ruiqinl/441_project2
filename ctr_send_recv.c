@@ -586,18 +586,6 @@ int enlist_DATA_info(struct packet_info_t *info, struct GET_request_t *GET_req){
     assert(info->peer_list != NULL);
     src_peer = list_ind(info->peer_list, 0);
     
-    /* Wrong! throw each flow_wnd into the matching slot in GET_req
-    // if empty flow_wnd_list, init one flow_wnd
-    if (flow_wnd_list->length == 0) {
-	DPRINTF(DEBUG_CTR, "enlist_data_info: create a new data_wnd\n");
-	init_flow_wnd(&flow_wnd);	
-	enlist(flow_wnd_list, flow_wnd);
-    }
-
-    // go to last flow_wnd, since this is the list we are dealing with
-    flow_wnd = (struct flow_wnd_t *)flow_wnd_list->end->data;
-    */
-
     assert(GET_req->slot_list != NULL);
     ite = get_iterator(GET_req->slot_list);
 

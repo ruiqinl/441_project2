@@ -527,6 +527,8 @@ void init_slot(struct slot_t **p) {
     
     (*p)->status = RAW;
     (*p)->received_data = NULL;
+
+    (*p)->trial_num = 0;
 }
 
 /* Check several thing for each slot: is the slot ready for downloading, or is the downloading done */
@@ -567,6 +569,13 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
 
 	case START:
 	    DPRINTF(DEBUG_PACKET, "START\n");
+
+	    if (slot->trial_num > MAX_TRIAL) {
+		DPRINTF(DEBUG_PACKET, "slot reached MAX_TRIAL=20, quit trying and fake data, go to DONE\n");
+		slot->received_data = (uint8 *)calloc(1, CHUNK_SIZE);
+		break;
+	    }
+	    
 	    // received IHAVE packet(s)
 	    assert(slot->peer_list->length != 0);
 	    assert(slot->selected_peer == NULL);
@@ -610,23 +619,7 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
 		slot->status = DONE;
 
 		remove_peer(GET_request->peer_slot_list, slot->selected_peer->id);
-		
-		/*
-		// delist the peer_slot from peer_slot_list
-		ite = get_iterator(GET_request->peer_slot_list);
-		while (has_next(ite)) {
-		    old_ite = ite;
-		    peer_slot = next(&ite);
-		    
-		    if (peer_slot->peer_id == slot->selected_peer->id) {
-			delist_item(GET_request->peer_slot_list, old_ite);
-			DPRINTF(DEBUG_PACKET, "check_GET_req: peer_slot_list removes item with peer_id=%d\n", slot->selected_peer->id);
-			break;
-		    }
-		}
-		
-		printf("Error! failed removing peer_slot after downloading\n");
-		assert(0);*/
+
 	    } 
 		
 
