@@ -129,7 +129,12 @@ int check_cong_wnd_timeout (struct data_wnd_t *wnd) {
     count = wnd->last_packet_sent - wnd->last_packet_acked;
     assert(count >= 0);
 
-    printf("??????count:%d\n", count);
+    printf("#packets in cong_wnd to checkt tmeout:%d\n", count);
+    
+    // check if done
+    if (wnd->last_packet_acked == wnd->packet_list->length)
+	return 0;
+    
     ite = list_ind_ite(wnd->packet_list, wnd->last_packet_acked-1+1); //-1+1
 
     for (i = 0; i < count; i++) {
@@ -771,6 +776,10 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
 		DPRINTF(DEBUG_CTR, "after moving, last_acked:%d, last_send:%d, last_avai:%d\n", data_wnd->last_packet_acked, data_wnd->last_packet_sent, data_wnd->last_packet_avai);
 	    }
 
+	    // check immediately
+	    if (data_wnd->last_packet_acked == data_wnd->packet_list->length)
+		return NULL;
+
             valid += 1;
             break;
         }
@@ -793,7 +802,7 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
         ackNum2 = ((struct packet_info_t*) (ACK_list->head->next->data))->ack_num;
         ackNum3 = ((struct packet_info_t*) (ACK_list->head->next->next->data))->ack_num;
         if ((ackNum1 == ackNum2) && (ackNum2 == ackNum3)){
-            DPRINTF(DEBUG_CTR, "!!!!!!!!!three same ack_num:%d!!!!!!!!\n", ackNum1);
+            DPRINTF(DEBUG_CTR, "three same ack_num:%d\n", ackNum1);
 	    DPRINTF(DEBUG_CTR, "do packet_loss, resend data_packet\n");
 	    
 	    packet_loss(data_wnd);// adjust is called inside

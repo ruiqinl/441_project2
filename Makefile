@@ -5,14 +5,13 @@ LDFAGS = -lm
 
 OBJS = peer.o list.o bt_parse.o debug.o input_buffer.o chunk.o sha.o packet.o spiffy.o ctr_send_recv.o process_udp.o 
 
-TESTBINS = test_debug test_input_buffer test_list
 BINS = peer list_test
 
 .c.o:
 	$(CC) $(CFLAGS) -c $<
 
 
-all:$(BINS) $(TESTBINS)
+all:$(BINS) 
 
 peer: $(OBJS) $(MK_CHUNKS_OBJS)
 	$(CC) $(CFLAGS) $(OBJS) -o $@ $(LDFLAGS)
@@ -27,4 +26,4 @@ ctr_send_recv_test: ctr_send_recv_test.o debug.o list.o process_udp.o bt_parse.o
 	$(CC) $(CFLAGS) $^ -o $@
 
 clean:
-	rm -f $(OBJS) $(BINS) $(TESTBINS)
+	rm -f $(OBJS) $(BINS)
