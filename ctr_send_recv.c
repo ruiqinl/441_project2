@@ -305,42 +305,56 @@ int outbound_list_send(int sock) {
 int data_wnd_list_send(int sock) {
     struct data_wnd_t *data_wnd = NULL;
     struct list_item_t *iterator = NULL;
-    struct list_item_t *old_iterator = NULL;
+    //struct list_item_t *old_iterator = NULL;
     int list_size;
+    static int wnd_ind = -1;
 
-    iterator = get_iterator(data_wnd_list);
+    if(data_wnd_list->length == 0)
+	return 0;
+
+    //iterator = get_iterator(data_wnd_list);
     list_size = get_list_size();
+
+    // pick the wnd to process
+    ++wnd_ind;
+    if (wnd_ind >= data_wnd_list->length)
+	wnd_ind = 0;
+
+    assert(wnd_ind <= data_wnd_list->length);
+    data_wnd = list_ind(data_wnd_list, wnd_ind);
+    //printf("processs wnd:%d\n", wnd_ind);
         
-    while (has_next(iterator)) {
+    //while (has_next(iterator)) {
 
-	old_iterator = iterator;
+    //old_iterator = iterator;
 
-	data_wnd = next(&iterator);
-	//printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
-	if (data_wnd->last_packet_acked == list_size) {
-	    printf("wnd_%d has no packet to send, delist it\n", data_wnd->connection_peer_id);
-	    delist_item(data_wnd_list, old_iterator);
-	} else {
-	    assert(data_wnd->last_packet_acked < list_size);
+    //data_wnd = next(&iterator);
+    //printf("data_wnd_list_send: try wnd_%d\n", data_wnd->connection_peer_id);
+    if (data_wnd->last_packet_acked == list_size) {
+	printf("wnd_%d has no packet to send, delist it\n", data_wnd->connection_peer_id);
+	iterator = list_ind_ite(data_wnd_list, wnd_ind);
+	delist_item(data_wnd_list, iterator);
+    } else {
+	assert(data_wnd->last_packet_acked < list_size);
 	    
-	    // no packet in packet_list  to sent, wait for ack
-	    if (data_wnd->last_packet_sent == list_size) {
-		//DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent == list_size, no packet in the wnd->packet_list to send\n");
-		return 0;
-	    }
-	    // no packet in congestion window to send
-	    if (data_wnd->last_packet_sent == data_wnd->last_packet_avai) {
-		//DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent = last_avai, no packet in the cong_window to send\n");
-		return 0;
-	    }
+	// no packet in packet_list  to sent, wait for ack
+	if (data_wnd->last_packet_sent == list_size) {
+	    //DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent == list_size, no packet in the wnd->packet_list to send\n");
+	    return 0;
+	}
+	// no packet in congestion window to send
+	if (data_wnd->last_packet_sent == data_wnd->last_packet_avai) {
+	    //DPRINTF(DEBUG_CTR, "data_wnd_list_send: last_sent = last_avai, no packet in the cong_window to send\n");
+	    return 0;
+	}
 	    
-	    //printf("wnd_%d has packet to send, send it\n", data_wnd->connection_peer_id);
-	    if (data_wnd_send(sock, data_wnd) == 1) {
-		// send a packet inside data_list out
-		return 1;
-	    }
+	//printf("wnd_%d has packet to send, send it\n", data_wnd->connection_peer_id);
+	if (data_wnd_send(sock, data_wnd) == 1) {
+	    // send a packet inside data_list out
+	    return 1;
 	}
     }
+	//}
 
     // did not send any packet out
     return 0;
