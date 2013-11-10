@@ -67,7 +67,7 @@ void init_flow_wnd(struct flow_wnd_t **wnd) {
     (*wnd)->next_packet_expec = 1; // in initial state, next epxec is 0th packet
     (*wnd)->last_packet_recv = 0;
 
-    (*wnd)->size = 10* INIT_WND_SIZE;
+    (*wnd)->size = INIT_SSTHRESH;
 
     //memcpy((*wnd)->hash, hash, HASH_LEN);
 
@@ -85,9 +85,10 @@ void init_flow_wnd(struct flow_wnd_t **wnd) {
 
 }
 
-int check_timeout(){
+int check_timeout(int sock){
     struct list_item_t *ite = NULL;
     struct data_wnd_t *data_wnd = NULL;
+    int ret;
     
     // could be empty
     if (data_wnd_list->length == 0)
@@ -101,8 +102,16 @@ int check_timeout(){
 	data_wnd = next(&ite);
 
 	assert(data_wnd != NULL);
-	if (check_cong_wnd_timeout(data_wnd))
+
+	ret = check_cong_wnd_timeout(data_wnd, sock);
+	if (ret == 0)
+	    ;
+	else if (ret == 1)
 	    packet_loss(data_wnd);
+	else if (ret == -1) {
+	    while (check_cong_wnd_timeout(data_wnd, sock) == -1)
+		; // keep sending
+	}
     }
 
     return 0;
@@ -112,8 +121,9 @@ int check_timeout(){
 /* check timeout of each packet in the cong_wnd between ack and sent
  * return 1 if anyone of them is timeout
  * return 0 if no timeout
+ * return -1 if every single packet timeout
  */
-int check_cong_wnd_timeout (struct data_wnd_t *wnd) {
+int check_cong_wnd_timeout (struct data_wnd_t *wnd, int sock) {
     assert(wnd != NULL);
     
     struct packet_info_t *info = NULL;
@@ -125,6 +135,8 @@ int check_cong_wnd_timeout (struct data_wnd_t *wnd) {
 
     time_t cur_time = 0;
     time_t time_diff = 0;
+    
+    int timeout_count = 0;
 
     count = wnd->last_packet_sent - wnd->last_packet_acked;
     assert(count >= 0);
@@ -148,6 +160,8 @@ int check_cong_wnd_timeout (struct data_wnd_t *wnd) {
 	time_diff = difftime(cur_time, info->time);
 	if (time_diff > TIMEOUT) {
 	    printf("check_cong_wnd_timeout: time_diff=%ld, timeout, resend\n", time_diff);
+	    timeout_count++;
+
 	    general_enlist(info);
 
 	    // set packet_loss
@@ -156,6 +170,21 @@ int check_cong_wnd_timeout (struct data_wnd_t *wnd) {
 	}
 
 	ite = ite->next;
+    }
+
+    if (count > 0 && timeout_count == count) {
+	printf("!!!!!!timeout_cout=count=%d, resend immediately\n", count);
+
+	ite = list_ind_ite(wnd->packet_list, wnd->last_packet_acked-1+1); //-1+1
+	for (i = 0; i < count; i++) {
+	    assert(ite != NULL);
+	    info = next(&ite);
+	    
+	    assert(info != 0);
+	    send_info(sock, info);
+	}
+	
+	return -1;
     }
 
     return out;
@@ -609,8 +638,9 @@ int enlist_DATA_info(struct packet_info_t *info, struct GET_request_t *GET_req){
 	++ind;
     }
 
-    assert(found == 1);
-
+    //assert(found == 1);
+    if (found == 0) // just done
+	return get_list_size();
     
     assert(slot->flow_wnd != NULL);
     assert(slot->flow_wnd->packet_list != NULL);
@@ -696,7 +726,7 @@ void update_flow_wnd(struct flow_wnd_t *wnd) {
 /* First, change wnd size based on mode
  * Second, check dup acks, change wnd and return data_packet to resend
  */
-struct list_t* do_inbound_ACK(struct packet_info_t *info){
+struct list_t* do_inbound_ACK(struct packet_info_t *info, int sock){
     assert(info != NULL);
 
 
@@ -789,12 +819,20 @@ struct list_t* do_inbound_ACK(struct packet_info_t *info){
 	    
 	    packet_loss(data_wnd);// adjust is called inside
 
+
             init_list(&ret_list);
             data_pckt = list_ind(data_wnd->packet_list, ackNum1+1-1); // do +1-1
             enlist(ret_list, data_pckt);
-	    printf("enlist data_packet_%d\n", data_pckt->seq_num);
 	    
+	    printf("enlist data_packet_%d\n", data_pckt->seq_num);
 	    assert(data_pckt->seq_num == ackNum1+1);
+
+	    /*
+	    data_pckt = list_ind(data_wnd->packet_list, ackNum1);
+	    assert(data_pckt->seq_num == ackNum1+1);
+	    send_info(sock, data_pckt);
+	    */
+
             return ret_list;
             
         }

@@ -88,6 +88,7 @@ struct slot_t {
     uint8 *received_data;
 
     int trial_num;
+    time_t old_time;
     
 };
 

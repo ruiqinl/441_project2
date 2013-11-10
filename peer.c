@@ -331,8 +331,8 @@ void peer_run(bt_config_t *config) {
 
 		// dup ack is checked when receiving ack
 		// check timeout, enlist resend packet inside
-		if (check_timeout())
-		    DPRINTF(DEBUG_PEER, "peer: timeout happened\n");
+		check_timeout(sock);
+		//DPRINTF(DEBUG_PEER, "peer: timeout happened\n");
 		
 	    }
 

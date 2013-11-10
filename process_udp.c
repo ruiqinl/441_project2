@@ -73,7 +73,7 @@ int send_info(int sock, struct packet_info_t *packet_info){
 
     if (packet_info->type == DATA) {
 	time(&(packet_info->time));
-	DPRINTF(DEBUG_PROCESS_UDP, "????send_info: send DATA_packet, set its time\n");
+	DPRINTF(DEBUG_PROCESS_UDP, "send_info: send DATA_packet, set its time\n");
     }
     
     // send to the peers in the peer_list of the packet_info
@@ -132,7 +132,7 @@ struct list_t  *process_inbound_udp(struct packet_info_t *info, int sock, bt_con
 	ret_list = process_inbound_GET(info, config);
 	break;
     case ACK:
-	ret_list = process_inbound_ACK(info);
+	ret_list = process_inbound_ACK(info, sock);
 	break;
     case DENIED:
 	printf("process_inbound_udp: DENIED, not implemted yet\n");
@@ -358,10 +358,10 @@ int search_hash(uint8 *target_hash, struct list_t *id_hash_list) {
 /* First, change wnd size based on mode
  * Second, check dup acks, change wnd and return data_packet to resend
  */
-struct list_t* process_inbound_ACK(struct packet_info_t *info){
+struct list_t* process_inbound_ACK(struct packet_info_t *info, int sock){
     assert(info != NULL);
 
-    return do_inbound_ACK(info);
+    return do_inbound_ACK(info, sock);
 }
 
 

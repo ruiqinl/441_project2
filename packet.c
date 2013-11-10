@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <time.h>
 #include "bt_parse.h"
 #include "list.h"
 #include "packet.h"
@@ -529,6 +530,7 @@ void init_slot(struct slot_t **p) {
     (*p)->received_data = NULL;
 
     (*p)->trial_num = 0;
+    time(&((*p)->old_time));
 }
 
 /* Check several thing for each slot: is the slot ready for downloading, or is the downloading done */
@@ -544,7 +546,8 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
     int fd;
     int slot_ind;
     struct GET_request_t *GET_request = NULL;
-
+    
+    time_t cur_time;
 
     assert(GET_request_dp != NULL);
 
@@ -565,16 +568,19 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
 	switch (slot->status) {
 	case RAW:
 	    DPRINTF(DEBUG_PACKET, "RAW\n");
-	    break; // have not received IHAVE yet, what to do ??????????
 
-	case START:
-	    DPRINTF(DEBUG_PACKET, "START\n");
-
-	    if (slot->trial_num > MAX_TRIAL) {
-		DPRINTF(DEBUG_PACKET, "slot reached MAX_TRIAL=20, quit trying and fake data, go to DONE\n");
-		slot->received_data = (uint8 *)calloc(1, CHUNK_SIZE);
+	    time(&cur_time);
+	    //printf("????diftime:%f\n", difftime(cur_time, slot->old_time));
+	    if (difftime(cur_time, slot->old_time) > RESTART_TIME) {
+		DPRINTF(DEBUG_PACKET, "slot stays in RAW status over RESTART_TIME=%d, goto RESTART\n", RESTART_TIME);		
+		slot->status = RESTART;
 		break;
 	    }
+	    
+	    break; 
+
+	case START:
+	    DPRINTF(DEBUG_PACKET, "START\n");	    
 	    
 	    // received IHAVE packet(s)
 	    assert(slot->peer_list->length != 0);
@@ -592,6 +598,14 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
 	    }
 	    // no available peer, restart????
 	    // right now, do nothing, hope some peer become available next time this slot is checked
+	    // solution: go to restart
+	    time(&cur_time);
+	    if (difftime(cur_time, slot->old_time) > RESTART_TIME){
+		DPRINTF(DEBUG_PACKET, "slot statys in START status over RESTART_TIME=%d, goto RESTART\n", RESTART_TIME);
+		slot->status = RESTART;
+		break;
+	    }
+	    	    
 	    break;
 
 	case DOWNLOADING:
@@ -661,11 +675,16 @@ struct list_t *check_GET_req(struct GET_request_t **GET_request_dp, struct list_
 
 	case RESTART:
 	    
-	    // send WHOAHS, delete current wnd, remove peer_slot, goto RAW
+	    // reset old_time,  send WHOAHS, delete current wnd, remove peer_slot, goto RAW
 	    DPRINTF(DEBUG_PACKET, "RESTART\n");
 
 	    //
-	    remove_peer(GET_request->peer_slot_list, slot->selected_peer->id);
+	    time(&(slot->old_time));
+	    //slot->trial_num += 1;
+	    
+	    //
+	    if (slot->selected_peer != NULL)
+		remove_peer(GET_request->peer_slot_list, slot->selected_peer->id);
 
 	    //
 	    slot->selected_peer = NULL;

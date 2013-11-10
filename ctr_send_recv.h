@@ -8,6 +8,7 @@
 
 #define RTT 3
 #define TIMEOUT 3
+#define RESTART_TIME (2*(RTT))
 
 #include "list.h"
 #include "packet.h"
@@ -88,7 +89,7 @@ int data_wnd_list_en(struct packet_info_t *info);
 int check_out_size();
 
 
-struct list_t* do_inbound_ACK(struct packet_info_t *info);
+struct list_t* do_inbound_ACK(struct packet_info_t *info, int sock);
 
 /* flow control below  */
 int enlist_DATA_info(struct packet_info_t *info, struct GET_request_t *GET_req);
@@ -97,9 +98,8 @@ void update_flow_wnd(struct flow_wnd_t *wnd);
 //int is_fully_received();
 int is_fully_received(struct flow_wnd_t *wnd, uint8 *slot_hash, uint8 **received_chunk);
 
-int check_timeout();
-int check_cong_wnd_timeout (struct data_wnd_t *wnd);
+int check_timeout(int sock);
+int check_cong_wnd_timeout (struct data_wnd_t *wnd, int sock);
 int packet_loss(struct data_wnd_t *wnd);
-struct list_t* do_inbound_ACK(struct packet_info_t *info);
 
 #endif
