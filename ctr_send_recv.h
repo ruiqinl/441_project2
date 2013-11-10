@@ -31,6 +31,8 @@ struct data_wnd_t {
     
     time_t time; // updated each time this wnd receives an ack
 
+    int flow_id; // actually, wnd id
+
 };
 
 struct flow_wnd_t {

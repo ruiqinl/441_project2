@@ -38,6 +38,9 @@ void init_ctr() {
 // last_pack_xx starts from 0
 void init_data_wnd(struct data_wnd_t **wnd) {
     
+    static int flow_id = 0;
+    ++flow_id;
+    
     *wnd = (struct data_wnd_t *)calloc(1, sizeof(struct data_wnd_t));
 
     (*wnd)->connection_peer_id = -1;
@@ -54,6 +57,8 @@ void init_data_wnd(struct data_wnd_t **wnd) {
     init_list(&((*wnd)->ACK_list));
 
     (*wnd)->time = 0;
+
+    (*wnd)->flow_id = flow_id;
     
 }
 

@@ -23,6 +23,6 @@ struct list_t *process_inbound_DATA(struct packet_info_t *info, struct GET_reque
 struct list_t* process_inbound_ACK(struct packet_info_t *packet_info, int sock);
 int adjust_data_wnd(struct data_wnd_t *wnd);
 
-void record_wnd_size(int flow_id, time_t time, int size);
+void record_wnd_size(char *flow_id, time_t time, int size);
 
 #endif

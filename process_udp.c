@@ -386,16 +386,19 @@ int adjust_data_wnd(struct data_wnd_t *wnd) {
 
     // 
     time_t cur_time; 
-
     time(&cur_time);
-    record_wnd_size(wnd->connection_peer_id, difftime(cur_time, global_time), wnd->last_packet_avai - wnd->last_packet_acked);
+
+    char *id_str = (char*)calloc(32, sizeof(char));
+
+    sprintf(id_str, "%d_%d", wnd->connection_peer_id, wnd->flow_id);
+    record_wnd_size(id_str, difftime(cur_time, global_time), wnd->last_packet_avai - wnd->last_packet_acked);
 
     return 0;
 }
 
 
 
-void record_wnd_size(int flow_id, time_t time, int size) {
+void record_wnd_size(char *id, time_t time, int size) {
     int record_size = 1024;
     FILE *fp = NULL;
     char record[record_size];
@@ -406,7 +409,7 @@ void record_wnd_size(int flow_id, time_t time, int size) {
     }
     
     memset(record, 0, record_size);
-    sprintf(record, "%d\t%10ld\t%5d\n", flow_id, time, size);
+    sprintf(record, "%s\t%10ld\t%5d\n", id, time, size);
 
     fputs(record, fp);
 
